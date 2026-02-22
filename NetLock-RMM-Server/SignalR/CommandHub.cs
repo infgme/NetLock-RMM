@@ -15,10 +15,9 @@ namespace NetLock_RMM_Server.SignalR
 {
     public class CommandHub : Hub
     {
-        // Verbindungswerte werden aus der appsettings.json geladen und defaulten zu sinnvollen Werten
+        // Connection values are loaded from the appsettings.json file and preset to sensible values.
         private static readonly int MAX_CONNECTION_ATTEMPTS = Configuration.SignalR.MaxConnectionAttempts;
         private static readonly int CONNECTION_ATTEMPT_DELAY_MS = Configuration.SignalR.ConnectionAttemptDelayMs;
-
 
         public class Device_Identity
         {
@@ -56,10 +55,11 @@ namespace NetLock_RMM_Server.SignalR
 
         public class Target_Device
         {
-            public string device_id { get; set; }
-            public string device_name { get; set; }
-            public string location_guid { get; set; } 
-            public string tenant_guid { get; set; }
+            //public string device_id { get; set; }
+            //public string device_name { get; set; }
+            //public string location_guid { get; set; } 
+            //public string tenant_guid { get; set; }
+            public string access_key { get; set; }
         }
 
         public class Command
@@ -116,38 +116,51 @@ namespace NetLock_RMM_Server.SignalR
                     decodedIdentityJson = Uri.UnescapeDataString(deviceIdentityEncoded);
                     Logging.Handler.Debug("SignalR CommandHub", "OnConnectedAsync", "Device identity: " + decodedIdentityJson);
 
-                    var deviceIdentity = JsonSerializer.Deserialize<Device_Identity>(decodedIdentityJson);
-                    if (deviceIdentity == null)
+                    // Try to deserialize as Root_Entity first (with wrapper)
+                    Device_Identity deviceIdentity = null;
+                    try
                     {
-                        Logging.Handler.Error("SignalR CommandHub", "OnConnectedAsync", "Failed to deserialize device identity");
+                        var rootData = JsonSerializer.Deserialize<Root_Entity>(decodedIdentityJson);
+                        if (rootData?.device_identity != null)
+                        {
+                            deviceIdentity = rootData.device_identity;
+                        }
+                        else
+                        {
+                            // Try direct deserialization if root entity failed
+                            deviceIdentity = JsonSerializer.Deserialize<Device_Identity>(decodedIdentityJson);
+                        }
+                    }
+                    catch (JsonException)
+                    {
+                        // Try direct deserialization if root entity parsing failed
+                        deviceIdentity = JsonSerializer.Deserialize<Device_Identity>(decodedIdentityJson);
+                    }
+                    
+                    if (deviceIdentity == null || string.IsNullOrEmpty(deviceIdentity.access_key))
+                    {
+                        Logging.Handler.Error("SignalR CommandHub", "OnConnectedAsync", 
+                            $"Failed to deserialize device identity or access_key is empty. JSON: {decodedIdentityJson}");
                         Context.Abort();
                         await Task.CompletedTask;
                         return;
                     }
 
-                    // Verbesserte Verbindungslogik: Prüfe auf existierende Verbindungen
-                    // Device identifiziert sich nur per access_key
-                    string deviceClientId = await Get_Device_ClientId_By_Access_Key(deviceIdentity.access_key);
+                    // Improved connection logic: Check for existing connections
+                    // Device identifies itself only via access_key
+                    string deviceClientId = await Get_Device_ClientId(deviceIdentity.access_key);
 
-                    // Wenn eine alte Verbindung existiert, entferne sie
+                    // If an old connection exists, remove it.
                     if (!String.IsNullOrEmpty(deviceClientId))
                     {
                         Logging.Handler.Debug("SignalR CommandHub", "OnConnectedAsync", $"Device with access_key already connected with ID {deviceClientId}. Replacing connection.");
 
-                        // Protokolliere Verbindungswechsel mit mehr Informationen
+                        // Log connection changes with more information
                         Logging.Handler.Debug("SignalR CommandHub", "OnConnectedAsync", 
                             $"Connection replacement: Old ID={deviceClientId}, New ID={clientId}");
                         
-                        // Entferne alte Verbindung 
+                        // Remove old connection 
                         CommandHubSingleton.Instance.RemoveClientConnection(deviceClientId);
-                    }
-
-                    // Verbindungszählerbegrenzung implementieren
-                    int currentConnections = CommandHubSingleton.Instance._clientConnections.Count;
-                    if (currentConnections > 1800) // Sicherheitsgrenze bei 1800 Verbindungen
-                    {
-                        Logging.Handler.Warning("SignalR CommandHub", "OnConnectedAsync", 
-                            $"High connection count: {currentConnections}. Consider scaling your server.");
                     }
                 }
                 else if (!string.IsNullOrEmpty(adminIdentityEncoded))
@@ -162,7 +175,7 @@ namespace NetLock_RMM_Server.SignalR
                 // Check uptime monitoring
                 await Uptime_Monitoring.Handler.Do(decodedIdentityJson, true);
 
-                // Stabile Verbindungsmeldung an den Client senden
+                // Send connection established message back to client
                 await Clients.Client(clientId).SendAsync("ConnectionEstablished", new { status = "connected", timestamp = DateTime.UtcNow });
             }
             catch (Exception ex)
@@ -183,6 +196,7 @@ namespace NetLock_RMM_Server.SignalR
 
                 // Get the identity JSON
                 CommandHubSingleton.Instance._clientConnections.TryGetValue(clientId, out string identityJson);
+                Console.WriteLine($"[DISCONNECT] Client {clientId} disconnected. Identity JSON: {identityJson}");
 
                 // Check uptime monitoring
                 await Uptime_Monitoring.Handler.Do(identityJson, false);
@@ -198,8 +212,78 @@ namespace NetLock_RMM_Server.SignalR
                         CommandHubSingleton.Instance.RemoveAdminCommand(adminCommand.Key);
                     }
                 }
+                
+                // Cleanup Relay-Sessions falls Device disconnected
+                if (!string.IsNullOrEmpty(identityJson))
+                {
+                    Console.WriteLine($"[RELAY] Cleaning up relay sessions for disconnected client {clientId}");
+                    try
+                    {
+                        Console.WriteLine($"[RELAY] Attempting to deserialize identity JSON...");
+                        
+                        // Parse als Root_Entity da das JSON ein Root-Objekt mit device_identity hat
+                        var rootData = JsonSerializer.Deserialize<Root_Entity>(identityJson);
+                        Console.WriteLine($"[RELAY] Deserialization successful: {rootData != null}");
+                        
+                        if (rootData?.device_identity != null)
+                        {
+                            var deviceIdentity = rootData.device_identity;
+                            Console.WriteLine($"[RELAY] Device access_key: {deviceIdentity.access_key}");
+                            
+                            if (!string.IsNullOrEmpty(deviceIdentity.access_key))
+                            {
+                                var relayServer = Relay.RelayServer.Instance;
+                                Console.WriteLine($"[RELAY] Getting active sessions...");
+                                
+                                var allSessions = relayServer.GetActiveSessions();
+                                Console.WriteLine($"[RELAY] Total active sessions: {allSessions.Count}");
+                                
+                                var sessionsToCleanup = allSessions
+                                    .Where(s => s.TargetDeviceId == deviceIdentity.access_key)
+                                    .ToList();
+                                
+                                Console.WriteLine($"[RELAY] Sessions to cleanup for device {deviceIdentity.access_key}: {sessionsToCleanup.Count}");
+                                
+                                if (sessionsToCleanup.Count > 0)
+                                {
+                                    Console.WriteLine($"[RELAY] Device {deviceIdentity.access_key} disconnected. Cleaning up {sessionsToCleanup.Count} relay sessions.");
+                                    
+                                    foreach (var session in sessionsToCleanup)
+                                    {
+                                        Console.WriteLine($"[RELAY] Cleaning up session {session.SessionId}...");
+                                        // Cleanup the target tunnel for this session
+                                        relayServer.CleanupTargetTunnelForSession(session.SessionId);
+                                        Console.WriteLine($"[RELAY] Cleaned up target tunnel for session {session.SessionId}");
+                                    }
+                                }
+                                else
+                                {
+                                    Console.WriteLine($"[RELAY] No relay sessions found for device {deviceIdentity.access_key}");
+                                }
+                            }
+                            else
+                            {
+                                Console.WriteLine($"[RELAY] Device has no access_key, skipping relay cleanup");
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine($"[RELAY] Failed to deserialize device identity or device_identity is null");
+                        }
+                    }
+                    catch (Exception relayEx)
+                    {
+                        Console.WriteLine($"[RELAY] Error cleaning up relay sessions: {relayEx.Message}");
+                        Console.WriteLine($"[RELAY] Stack trace: {relayEx.StackTrace}");
+                        Logging.Handler.Error("SignalR CommandHub", "OnDisconnectedAsync_RelayCleanup", relayEx.ToString());
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"[RELAY] No identity JSON for client {clientId}, skipping relay cleanup");
+                }
 
-                // Optimierte Logging - nur detaillierte Logs bei Bedarf
+                // Only output all connected clients at detailed debug level
                 if (Logging.Handler.IsDebugVerboseEnabled())
                 {
                     foreach (var client in CommandHubSingleton.Instance._clientConnections)
@@ -216,62 +300,21 @@ namespace NetLock_RMM_Server.SignalR
             await base.OnDisconnectedAsync(exception);
         }
 
-        // Get device client id by access_key (used when device connects)
-        public async Task<string> Get_Device_ClientId_By_Access_Key(string access_key)
+        // Get device client id by access key (used when admin sends command via webconsole)
+        public async Task<string> Get_Device_ClientId(string access_key)
         {
             try
             {
-                Logging.Handler.Debug("SignalR CommandHub", "Get_Device_ClientID_By_Access_Key", $"Access Key: {access_key}");
+                Logging.Handler.Debug("SignalR CommandHub", "Get_Device_ClientID", $"Access Key: {access_key}");
 
-                // Optimierte Suche durch Einschränkung der Logausgabe 
-                // Nur bei niedrigerem Log-Level alle Clients auflisten
+                // Optimized search by limiting log output 
+                // Only list all clients if the log level is lower
                 if (Logging.Handler.IsDebugVerboseEnabled())
                 {
-                    foreach (var client in CommandHubSingleton.Instance._clientConnections)
-                    {
-                        Logging.Handler.Debug("SignalR CommandHub", "Get_Device_ClientID_By_Access_Key", $"Connected client: {client.Key}, {client.Value}");
-                    }
-                }
-
-                var clientId = CommandHubSingleton.Instance._clientConnections.FirstOrDefault(x =>
-                {
-                    try
-                    {
-                        var rootData = JsonSerializer.Deserialize<Root_Entity>(x.Value);
-                        return rootData?.device_identity != null &&
-                               rootData.device_identity.access_key == access_key;
-                    }
-                    catch (JsonException)
-                    {
-                        return false;
-                    }
-                }).Key;
-
-                if (string.IsNullOrEmpty(clientId))
-                {
-                    Logging.Handler.Debug("SignalR CommandHub", "Get_Device_ClientID_By_Access_Key", "Client ID not found.");
-                }
-
-                return clientId;
-            }
-            catch (Exception ex)
-            {
-                Logging.Handler.Error("SignalR CommandHub", "Get_Device_ClientID_By_Access_Key", ex.ToString());
-                return null;
-            }
-        }
-
-        // Get device client id by device info (used when admin sends command via webconsole)
-        public async Task<string> Get_Device_ClientId(string device_name, string location_guid, string tenant_guid)
-        {
-            try
-            {
-                Logging.Handler.Debug("SignalR CommandHub", "Get_Device_ClientID", $"Device: {device_name}, Location: {location_guid}, Tenant: {tenant_guid}");
-
-                // Optimierte Suche durch Einschränkung der Logausgabe 
-                // Nur bei niedrigerem Log-Level alle Clients auflisten
-                if (Logging.Handler.IsDebugVerboseEnabled())
-                {
+                    // List amount of connected clients
+                    Logging.Handler.Debug("SignalR CommandHub", "Get_Device_ClientID", $"Total connected clients: {CommandHubSingleton.Instance._clientConnections.Count}");
+                    
+                    // List all connected clients for debugging
                     foreach (var client in CommandHubSingleton.Instance._clientConnections)
                     {
                         Logging.Handler.Debug("SignalR CommandHub", "Get_Device_ClientID", $"Connected client: {client.Key}, {client.Value}");
@@ -284,9 +327,7 @@ namespace NetLock_RMM_Server.SignalR
                     {
                         var rootData = JsonSerializer.Deserialize<Root_Entity>(x.Value);
                         return rootData?.device_identity != null &&
-                               rootData.device_identity.device_name == device_name &&
-                               rootData.device_identity.location_guid == location_guid &&
-                               rootData.device_identity.tenant_guid == tenant_guid;
+                               rootData.device_identity.access_key == access_key;
                     }
                     catch (JsonException)
                     {
@@ -312,8 +353,8 @@ namespace NetLock_RMM_Server.SignalR
         {
             try
             {
-                // Optimierte Suche durch Einschränkung der Logausgabe 
-                // Nur bei niedrigerem Log-Level alle Clients auflisten
+                // Optimized search by limiting log output 
+                // Only list all clients if the log level is lower
                 if (Logging.Handler.IsDebugVerboseEnabled())
                 {
                     foreach (var client in CommandHubSingleton.Instance._adminCommands)
@@ -539,7 +580,7 @@ namespace NetLock_RMM_Server.SignalR
             }
         }
 
-        // Helper-Methode zur Bestimmung des korrekten Methodennamens basierend auf Type und Command
+        // Helper method to determine the correct method name based on Type and Command
         private string GetResponseMethodName(int type, int file_browser_command, string command = null)
         {
             if (type == 0) // remote shell
@@ -587,6 +628,8 @@ namespace NetLock_RMM_Server.SignalR
                 return "ReceiveClientResponsePowerManagementAction";
             else if (type == 10 || type == 11 || type == 12 || type == 13) // Remote Eventlog Viewer - Get Eventlogs
                 return "ReceiveClientResponseRemoteEventlogViewer";
+            else if (type == 15) // Virtual Display Driver Management
+                return "ReceiveClientResponseVirtualDisplay";
             
             return "ReceiveClientResponse"; // Fallback
         }
@@ -616,9 +659,12 @@ namespace NetLock_RMM_Server.SignalR
                 Command command = rootData.command;
 
                 string commandJson = JsonSerializer.Serialize(command);
-
-                // Get client id
-                string client_id = await Get_Device_ClientId(target_device.device_name, target_device.location_guid, target_device.tenant_guid);
+                
+                // Get signalR client id of the target device
+                string client_id = await Get_Device_ClientId(target_device.access_key);
+                
+                // Get device_id from database based on access_key 
+                string device_id = await MySQL.Handler.Get_Device_Id_By_Access_Key(target_device.access_key);
 
                 // Do connection checks
                 if (String.IsNullOrEmpty(client_id))
@@ -650,13 +696,13 @@ namespace NetLock_RMM_Server.SignalR
                 {
                     admin_client_id = admin_client_id, // admin client id
                     admin_token = admin_identity.token, // admin_token
-                    device_id = target_device.device_id, // device_id
+                    device_id = device_id, // device_id from database
                     command = command.command, // command
                     powershell_code = command.powershell_code, // powershell_code
                     type = command.type, // represents the command type. Needed for the response to know how to handle the response
                     file_browser_command = command.file_browser_command, // represents the file browser command type. Needed for the response to know how to handle the response
                 };
-
+                
                 // Convert the object into a JSON string
                 string admin_identity_info_json = JsonSerializer.Serialize(jsonObject);
 
@@ -708,10 +754,7 @@ namespace NetLock_RMM_Server.SignalR
             }
         }
         
-        // Add client admin id to the json
-        
-
-        // Helper-Methode für robustere SignalR-Kommunikation
+        // Helper method for more robust SignalR communication
         private async Task<bool> TrySendToClientWithRetry(string clientId, string method, string arg)
         {
             int attempts = 0;

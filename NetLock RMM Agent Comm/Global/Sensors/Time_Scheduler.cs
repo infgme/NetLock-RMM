@@ -95,6 +95,7 @@ namespace Global.Sensors
             public bool notifications_microsoft_teams { get; set; } = false;
             public bool notifications_telegram { get; set; } = false;
             public bool notifications_ntfy_sh { get; set; } = false;
+            public bool notifications_webhook { get; set; } = false;
         }
 
         public class Notifications
@@ -103,6 +104,7 @@ namespace Global.Sensors
             public bool microsoft_teams { get; set; }
             public bool telegram { get; set; }
             public bool ntfy_sh { get; set; }
+            public bool webhook { get; set; }
         }
 
         public class Process_Information
@@ -286,7 +288,8 @@ namespace Global.Sensors
                         mail = sensor_item.notifications_mail,
                         microsoft_teams = sensor_item.notifications_microsoft_teams,
                         telegram = sensor_item.notifications_telegram,
-                        ntfy_sh = sensor_item.notifications_ntfy_sh
+                        ntfy_sh = sensor_item.notifications_ntfy_sh,
+                        webhook = sensor_item.notifications_webhook
                     };
 
                     string notifications_json = JsonSerializer.Serialize(notifications, new JsonSerializerOptions { WriteIndented = true });
@@ -347,21 +350,41 @@ namespace Global.Sensors
                             File.WriteAllText(sensor_path, encrypted_sensor_json);
                         }
 
-                        // Check if script has changed, if so update it
+                        // Check if sensor file is valid and if script has changed
                         if (File.Exists(sensor_path))
                         {
-                            // Decrypt sensor JSON after reading
-                            string encrypted_existing_sensor_json = File.ReadAllText(sensor_path);
-                            string existing_sensor_json = Encryption.String_Encryption.Decrypt(encrypted_existing_sensor_json, Application_Settings.NetLock_Local_Encryption_Key);
-                            Sensor existing_sensor = JsonSerializer.Deserialize<Sensor>(existing_sensor_json);
-                            
-                            if (existing_sensor.script != sensor.script)
+                            try
                             {
-                                Logging.Sensors("Sensors.Time_Scheduler.Check_Execution", "Sensor script has changed. Updating it.", "Sensor: " + sensor.name + " Sensor id: " + sensor.id);
+                                // Decrypt sensor JSON after reading
+                                string encrypted_existing_sensor_json = File.ReadAllText(sensor_path);
+                                string existing_sensor_json = Encryption.String_Encryption.Decrypt(encrypted_existing_sensor_json, Application_Settings.NetLock_Local_Encryption_Key);
                                 
-                                // Encrypt sensor JSON before writing
+                                // Integrity check: Try to deserialize to validate the JSON format
+                                Sensor existing_sensor = JsonSerializer.Deserialize<Sensor>(existing_sensor_json);
+                                
+                                if (existing_sensor.script != sensor.script)
+                                {
+                                    Logging.Sensors("Sensors.Time_Scheduler.Check_Execution", "Sensor script has changed. Updating it.", "Sensor: " + sensor.name + " Sensor id: " + sensor.id);
+                                    
+                                    // Encrypt sensor JSON before writing
+                                    string encrypted_sensor_json = Encryption.String_Encryption.Encrypt(sensor_json, Application_Settings.NetLock_Local_Encryption_Key);
+                                    File.WriteAllText(sensor_path, encrypted_sensor_json);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                // Integrity check failed: Delete corrupted sensor file
+                                Logging.Sensors("Sensors.Time_Scheduler.Check_Execution", "Sensor file integrity check failed. Deleting corrupted file.", 
+                                    "Sensor: " + sensor.name + " Sensor id: " + sensor.id + " Exception: " + ex.Message);
+                                
+                                File.Delete(sensor_path);
+                                
+                                // Recreate the sensor file with the current valid data
                                 string encrypted_sensor_json = Encryption.String_Encryption.Encrypt(sensor_json, Application_Settings.NetLock_Local_Encryption_Key);
                                 File.WriteAllText(sensor_path, encrypted_sensor_json);
+                                
+                                Logging.Sensors("Sensors.Time_Scheduler.Check_Execution", "Sensor file recreated with valid data.", 
+                                    "Sensor: " + sensor.name + " Sensor id: " + sensor.id);
                             }
                         }
                     }
@@ -428,11 +451,83 @@ namespace Global.Sensors
                         // Null-check after deserialization
                         if (sensor_item == null)
                         {
-                            Logging.Error("Sensors.Time_Scheduler.Check_Execution", "Failed to deserialize sensor", "Sensor file: " + sensor);
-                            continue;
+                            Logging.Error("Sensors.Time_Scheduler.Check_Execution", "Failed to deserialize sensor. Deleting it.", "Sensor file: " + sensor);
+                            
+                            // Delete corrupted sensor file
+                            File.Delete(sensor);
+                            continue; // Skip processing this sensor
                         }
 
                         sensor_id = sensor_item.id; // needed for logging
+                        
+                        // JSON format integrity check - verify all notification fields exist
+                        // This handles cases where old JSON format is missing fields like notifications_webhook
+                        bool hasIntegrityIssue = false;
+                        try
+                        {
+                            // Parse raw JSON to check for missing fields
+                            using (JsonDocument doc = JsonDocument.Parse(sensor_json))
+                            {
+                                JsonElement root = doc.RootElement;
+                                
+                                // Check if notification fields exist in JSON
+                                if (!root.TryGetProperty("notifications_webhook", out _))
+                                {
+                                    Logging.Sensors("Sensors.Time_Scheduler.Check_Execution", "JSON format integrity check", 
+                                        $"Missing field 'notifications_webhook' in sensor {sensor_item.name} ({sensor_item.id}). Deleting corrupted sensor file.");
+                                    hasIntegrityIssue = true;
+                                }
+                                
+                                // Additional checks for other notification fields (in case they're also missing)
+                                if (!root.TryGetProperty("notifications_mail", out _) ||
+                                    !root.TryGetProperty("notifications_microsoft_teams", out _) ||
+                                    !root.TryGetProperty("notifications_telegram", out _) ||
+                                    !root.TryGetProperty("notifications_ntfy_sh", out _))
+                                {
+                                    Logging.Sensors("Sensors.Time_Scheduler.Check_Execution", "JSON format integrity check", 
+                                        $"Missing notification fields in sensor {sensor_item.name} ({sensor_item.id}). Deleting corrupted sensor file.");
+                                    hasIntegrityIssue = true;
+                                }
+                                
+                                // Check for other important fields that might be missing
+                                if (!root.TryGetProperty("suppress_notification", out _) ||
+                                    !root.TryGetProperty("resolved_notification", out _) ||
+                                    !root.TryGetProperty("already_notified", out _))
+                                {
+                                    Logging.Sensors("Sensors.Time_Scheduler.Check_Execution", "JSON format integrity check", 
+                                        $"Missing notification control fields in sensor {sensor_item.name} ({sensor_item.id}). Deleting corrupted sensor file.");
+                                    hasIntegrityIssue = true;
+                                }
+                            }
+                            
+                            // If integrity issue detected, delete sensor file (will be recreated by existing logic)
+                            if (hasIntegrityIssue)
+                            {
+                                Logging.Sensors("Sensors.Time_Scheduler.Check_Execution", "Deleting sensor with integrity issues", 
+                                    $"Sensor: {sensor_item.name} ({sensor_item.id}). File will be recreated on next sync.");
+                                
+                                File.Delete(sensor);
+                                continue; // Skip processing this sensor, it will be recreated on next run
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Logging.Error("Sensors.Time_Scheduler.Check_Execution", "JSON format integrity check failed", 
+                                $"Sensor: {sensor_item.name} ({sensor_item.id}) Exception: {ex.ToString()}");
+                            
+                            // Delete corrupted file on error
+                            try
+                            {
+                                File.Delete(sensor);
+                                Logging.Sensors("Sensors.Time_Scheduler.Check_Execution", "Deleted corrupted sensor file after integrity check error", 
+                                    $"Sensor: {sensor_item.name} ({sensor_item.id})");
+                            }
+                            catch
+                            {
+                                // Ignore deletion errors
+                            }
+                            continue; // Skip processing this sensor
+                        }
 
                         Logging.Sensors("Sensors.Time_Scheduler.Check_Execution", "Check sensor execution", "Sensor: " + sensor_item.name + " time_scheduler_type: " + sensor_item.time_scheduler_type);
 
@@ -465,15 +560,25 @@ namespace Global.Sensors
                         {
                             Logging.Sensors("Sensors.Time_Scheduler.Check_Execution", "System boot", "name: " + sensor_item.name + " id: " + sensor_item.id + " last_run: " + DateTime.Parse(sensor_item.last_run ?? DateTime.Now.ToString()) + " Last boot: " + os_up_time.ToString());
 
-                            // Check if last run is empty, if so set it to now
+                            // Check if last run is empty
                             if (String.IsNullOrEmpty(sensor_item.last_run))
                             {
-                                sensor_item.last_run = DateTime.Now.ToString();
+                                // Only execute if the last boot was within the last 10 minutes
+                                // This prevents the sensor from executing when newly created on a system that has been running for a while
+                                if (DateTime.Now - os_up_time <= TimeSpan.FromMinutes(10))
+                                {
+                                    execute = true;
+                                }
+                                
+                                // Set last_run to the current boot time to prevent re-execution until next reboot
+                                sensor_item.last_run = os_up_time.ToString();
                                 WriteEncryptedSensor(sensor, sensor_item);
                             }
-
-                            if (DateTime.Parse(sensor_item.last_run) < os_up_time)
+                            else if (DateTime.Parse(sensor_item.last_run) < os_up_time)
+                            {
+                                // Sensor was last run before the current boot, so execute it
                                 execute = true;
+                            }
                         }
                         else if (sensor_item.time_scheduler_type == 1) // date & time
                         {
@@ -2285,12 +2390,13 @@ namespace Global.Sensors
                                                 mail = sensor_item.notifications_mail,
                                                 microsoft_teams = sensor_item.notifications_microsoft_teams,
                                                 telegram = sensor_item.notifications_telegram,
-                                                ntfy_sh = sensor_item.notifications_ntfy_sh
+                                                ntfy_sh = sensor_item.notifications_ntfy_sh,
+                                                webhook = sensor_item.notifications_webhook
                                             };
 
                                             // Serializing the extracted properties to JSON
                                             string notifications_json = JsonSerializer.Serialize(notifications, new JsonSerializerOptions { WriteIndented = true });
-                                                
+                                            
                                             if (sensor_item.category == 0) //utilization
                                             {
                                                 if (sensor_item.sub_category == 0)

@@ -1,0 +1,136 @@
+@using MySqlConnector;
+@using System.Data.Common;
+@using System.Text.Json;
+@using System.Security.Claims
+
+@inject NavigationManager NavigationManager
+@inject ILocalStorageService localStorage
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h5">Create Relay Identity</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-4">
+            Create a new device-based relay identity. The API key will be automatically generated and the hardware ID will be registered on first use.
+        </MudText>
+        
+        <MudTextField Label="Name" T="string" @bind-Value="name" Required="true" RequiredError="Name is required" Immediate="@true" ReadOnly="false" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text" Color="Color.Default" Size="Size.Small">Cancel</MudButton>
+        <MudButton OnClick="@CreateRelayIdentity" Variant="Variant.Filled" Color="@Color.Success" Size="Size.Small" Disabled="@(String.IsNullOrEmpty(name))">Create</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; }
+
+    private string name = String.Empty;
+    private int adminId = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Get the current user from the authentication state
+        var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+
+        // Check if user is authenticated
+        if (user?.Identity is not { IsAuthenticated: true })
+        {
+            NavigationManager.NavigateTo("/login", true);
+            return;
+        }
+
+        // Get admin_id from accounts table
+        string username = user.FindFirst(ClaimTypes.Email)?.Value;
+        await GetAdminId(username);
+    }
+
+    private async Task GetAdminId(string username)
+    {
+        MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+
+        try
+        {
+            await conn.OpenAsync();
+
+            string query = "SELECT id FROM accounts WHERE username = @username;";
+            MySqlCommand cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@username", username);
+
+            using (DbDataReader reader = await cmd.ExecuteReaderAsync())
+            {
+                if (reader.HasRows && await reader.ReadAsync())
+                {
+                    adminId = Convert.ToInt32(reader["id"]);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("/Account/Dialogs/Relay_Account_Dialog -> GetAdminId", "Error", ex.Message);
+        }
+        finally
+        {
+            await conn.CloseAsync();
+        }
+    }
+
+    private async Task CreateRelayIdentity()
+    {
+        this.Snackbar.Configuration.ShowCloseIcon = true;
+        this.Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+
+        if (adminId == 0)
+        {
+            this.Snackbar.Add("Unable to determine admin ID.", Severity.Error);
+            return;
+        }
+
+        bool success = false;
+        string apiKey = Guid.NewGuid().ToString() + "-" + Guid.NewGuid().ToString();
+
+        MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+
+        try
+        {
+            await conn.OpenAsync();
+
+            string query = "INSERT INTO relay_admins (admin_id, name, api_key, hardware_id) VALUES (@admin_id, @name, @api_key, '');";
+
+            MySqlCommand cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@admin_id", adminId);
+            cmd.Parameters.AddWithValue("@api_key", apiKey);
+            cmd.Parameters.AddWithValue("@name", name);
+            
+            await cmd.ExecuteNonQueryAsync();
+
+            success = true;
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("/Account/Dialogs/Relay_Account_Dialog -> CreateRelayIdentity", "Error", ex.Message);
+        }
+        finally
+        {
+            await conn.CloseAsync();
+        }
+
+        if (success)
+        {
+            this.Snackbar.Add("Relay identity created successfully.", Severity.Success);
+            this.MudDialog.Close(DialogResult.Ok("success"));
+        }
+        else
+        {
+            this.Snackbar.Add("An error occurred while creating the relay identity.", Severity.Error);
+        }
+    }
+
+    void Cancel() => MudDialog.Cancel();
+}
+

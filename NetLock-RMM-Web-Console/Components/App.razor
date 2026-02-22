@@ -1,6 +1,6 @@
 ﻿<MudThemeProvider />
 <MudDialogProvider />
-<MudSnackbarProvider /> 
+<MudSnackbarProvider />
 
 <!DOCTYPE html>
 <html lang="en">
@@ -8,10 +8,10 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <base href="/" />  
+    <base href="/" />
     <!-- Local Fonts (GDPR compliant) -->
     <link href="fonts/roboto.css" rel="stylesheet" />
-    <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />  
+    <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
 
     <link rel="icon" type="image/ico" href="favicon.ico" />
     <title>NetLock RMM - Web Console</title>
@@ -19,45 +19,46 @@
 </head>
 
 <body>
-    <Routes @rendermode="RenderMode.InteractiveServer" />
-    <script>
-        window.isDarkMode = function () {
-            return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        };
-    </script>
-    <script src="_framework/blazor.web.js"></script>
-    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
-    <script src="_content/BlazorMonaco/jsInterop.js"></script>
-    <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/loader.js"></script>
-    <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/editor/editor.main.js"></script>
-    <script src="js/custom.js"></script>
-    <script src="js/remote_control.js"></script>
-    <script src="js/copyToClipboard.js"></script>
-    <script src="js/fullscreen.js"></script>
+<Routes @rendermode="RenderMode.InteractiveServer" />
+<script>
+    window.isDarkMode = function () {
+        return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    };
+</script>
+<script src="_framework/blazor.web.js"></script>
+<script src="_content/MudBlazor/MudBlazor.min.js"></script>
+<script src="_content/BlazorMonaco/jsInterop.js"></script>
+<script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/loader.js"></script>
+<script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/editor/editor.main.js"></script>
+<script src="js/custom.js?v=@Application_Settings.web_console_version"></script>
+<script src="js/remote_control.js?v=@Application_Settings.web_console_version"></script>
+<script src="js/copyToClipboard.js?v=@Application_Settings.web_console_version"></script>
+<script src="js/fullscreen.js?v=@Application_Settings.web_console_version"></script>
 
-    <!--https://github.com/serdarciplak/BlazorMonaco/issues/136-->
-    <script>
-        (function () {
-            const blazorMonaco = window.blazorMonaco;
-            const innerFunction = blazorMonaco.editor.create;
+<!--https://github.com/serdarciplak/BlazorMonaco/issues/136-->
+<script>
+    (function () {
+        const blazorMonaco = window.blazorMonaco;
+        const innerFunction = blazorMonaco.editor.create;
 
-            blazorMonaco.editor.create = function (id, options, override, dotnetRef) {
-                try {
-                    const oldEditor = blazorMonaco.editor.getEditor(id, true);
+        blazorMonaco.editor.create = function (id, options, override, dotnetRef) {
+            try {
+                const oldEditor = blazorMonaco.editor.getEditor(id, true);
 
-                    if (oldEditor !== null) {
-                        blazorMonaco.editors.splice(blazorMonaco.editors.findIndex(item => item.id === id), 1);
-                        oldEditor.dispose();
-                    }
-
-                    innerFunction.call(this, id, options, override, dotnetRef);
-                } catch (error) {
-                    console.error("Error in overriding editor creation:", error);
+                if (oldEditor !== null) {
+                    blazorMonaco.editors.splice(blazorMonaco.editors.findIndex(item => item.id === id), 1);
+                    oldEditor.dispose();
                 }
-            };
-        })();
-    </script>
+
+                innerFunction.call(this, id, options, override, dotnetRef);
+            } catch (error) {
+                console.error("Error in overriding editor creation:", error);
+            }
+        };
+    })();
+</script>
 
 </body>
 
 </html>
+

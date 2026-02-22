@@ -15,6 +15,7 @@ using Avalonia.Media;
 using Global.Encryption;
 using Global.Helper;
 using NetLock_RMM_Agent_Comm;
+using System.Threading;
 
 
 namespace NetLock_RMM_Tray_Icon
@@ -23,6 +24,7 @@ namespace NetLock_RMM_Tray_Icon
     {
         private TrayIcon _trayIcon;
         private ActionSidebar? _actionSidebar;
+        private Timer? _configReloadTimer;
         
         public override void Initialize()
         {
@@ -42,10 +44,11 @@ namespace NetLock_RMM_Tray_Icon
                     
                     // Load tray icon from config or use default
                     WindowIcon? trayIconImage = null;
-                    try
+                    
+                    // Try to load icon from Base64 in config
+                    if (!string.IsNullOrWhiteSpace(Handler.AppConfig.TrayConfig?.IconBase64))
                     {
-                        // Try to load icon from Base64 in config
-                        if (!string.IsNullOrEmpty(Handler.AppConfig.TrayConfig?.IconBase64))
+                        try
                         {
                             string base64Data = Handler.AppConfig.TrayConfig.IconBase64;
                             
@@ -64,19 +67,19 @@ namespace NetLock_RMM_Tray_Icon
                             }
                             Console.WriteLine("Loaded tray icon from Base64 config");
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Failed to load icon from Base64: {ex.Message}");
-                        Logging.Error("OnFrameworkInitializationCompleted", "Failed to load Base64 icon", ex.ToString());
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Failed to load icon from Base64: {ex.Message}");
+                            Logging.Error("OnFrameworkInitializationCompleted", "Failed to load Base64 icon", ex.ToString());
+                        }
                     }
                     
-                    // Fallback to default icon if Base64 loading failed
+                    // Fallback to default icon if Base64 loading failed or was empty
                     if (trayIconImage == null)
                     {
                         try
                         {
-                            trayIconImage = new WindowIcon(System.IO.Path.Combine("Assets", "trayicon.ico"));
+                            trayIconImage = new WindowIcon(Application_Paths.program_files_netlock_logo_path);
                             Console.WriteLine("Using default tray icon from Assets");
                         }
                         catch (Exception ex)
@@ -139,6 +142,7 @@ namespace NetLock_RMM_Tray_Icon
                         var exitItem = new NativeMenuItem(Handler.AppConfig.TrayConfig.ExitButtonTitle ?? "Exit");
                         exitItem.Click += (_, __) => 
                         {
+                            _configReloadTimer?.Dispose();
                             _actionSidebar?.Close();
                             desktop.Shutdown();
                         };
@@ -146,6 +150,24 @@ namespace NetLock_RMM_Tray_Icon
                     }
                     
                     _trayIcon.Menu = menu;
+                    
+                    // Start timer to reload config every 5 minutes
+                    _configReloadTimer = new Timer(
+                        callback: _ => 
+                        {
+                            try
+                            {
+                                ReloadConfigAndUpdateUI().Wait();
+                            }
+                            catch (Exception ex)
+                            {
+                                Logging.Error("ConfigReloadTimer", "error", ex.ToString());
+                            }
+                        },
+                        state: null,
+                        dueTime: TimeSpan.FromMinutes(5),
+                        period: TimeSpan.FromMinutes(5)
+                    );
                 }
                 
                 base.OnFrameworkInitializationCompleted();
@@ -229,6 +251,157 @@ namespace NetLock_RMM_Tray_Icon
             }
         }
         
+        private async Task ReloadConfigAndUpdateUI()
+        {
+            try
+            {
+                Console.WriteLine("Reloading config...");
+                LoadConfig();
+                
+                // Update UI on the UI thread
+                if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+                {
+                    UpdateTrayIcon();
+                }
+                else
+                {
+                    await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => UpdateTrayIcon());
+                }
+            }
+            catch (Exception ex)
+            {
+                Logging.Error("ReloadConfigAndUpdateUI", "error", ex.ToString());
+            }
+        }
+        
+        private void UpdateTrayIcon()
+        {
+            try
+            {
+                if (_trayIcon == null)
+                    return;
+                
+                // Update tooltip text
+                _trayIcon.ToolTipText = Handler.AppConfig.TrayConfig?.Title ?? "NetLock RMM";
+                
+                // Update icon
+                WindowIcon? trayIconImage = null;
+                
+                // Try to load icon from Base64 in config
+                if (!string.IsNullOrWhiteSpace(Handler.AppConfig.TrayConfig?.IconBase64))
+                {
+                    try
+                    {
+                        string base64Data = Handler.AppConfig.TrayConfig.IconBase64;
+                        
+                        // Remove data URI prefix if present
+                        if (base64Data.Contains(","))
+                        {
+                            int commaIndex = base64Data.IndexOf(',');
+                            base64Data = base64Data.Substring(commaIndex + 1);
+                        }
+                        
+                        byte[] iconBytes = Convert.FromBase64String(base64Data);
+                        using (var ms = new MemoryStream(iconBytes))
+                        {
+                            var bitmap = new Avalonia.Media.Imaging.Bitmap(ms);
+                            trayIconImage = new WindowIcon(bitmap);
+                        }
+                        Console.WriteLine("Reloaded tray icon from Base64 config");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Failed to reload icon from Base64: {ex.Message}");
+                        Logging.Error("UpdateTrayIcon", "Failed to load Base64 icon", ex.ToString());
+                    }
+                }
+                
+                // Fallback to default icon if Base64 loading failed or was empty
+                if (trayIconImage == null)
+                {
+                    try
+                    {
+                        trayIconImage = new WindowIcon(Application_Paths.program_files_netlock_logo_path);
+                        Console.WriteLine("Using default tray icon from Assets");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Failed to load default icon: {ex.Message}");
+                    }
+                }
+                
+                if (trayIconImage != null)
+                {
+                    _trayIcon.Icon = trayIconImage;
+                }
+                
+                // Update menu
+                var menu = new NativeMenu();
+                
+                // Additional buttons from config
+                string configPath = Application_Paths.tray_icon_settings_json_path;
+                
+                if (File.Exists(configPath))
+                {
+                    try
+                    {
+                        string jsonString = File.ReadAllText(configPath);
+                        jsonString = String_Encryption.Decrypt(jsonString, Application_Settings.NetLock_Local_Encryption_Key);
+                        
+                        var configRoot = JsonSerializer.Deserialize<Handler.ConfigRoot>(jsonString);
+                        if (configRoot?.Buttons != null)
+                        {
+                            foreach (var button in configRoot.Buttons)
+                            {
+                                if (!string.IsNullOrEmpty(button.Name))
+                                {
+                                    var menuItem = new NativeMenuItem(button.Name);
+                                    menuItem.Click += (_, __) => HandleButtonAction(button.Action, button.ActionDetails);
+                                    menu.Items.Add(menuItem);
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logging.Error("UpdateTrayIcon", "Config loading failed", ex.ToString());
+                    }
+                }
+                
+                // Add About button from config
+                if (Handler.AppConfig.TrayConfig != null && Handler.AppConfig.TrayConfig.AboutButtonEnabled == true && Handler.AppConfig.AboutConfig?.Enabled == true)
+                {
+                    var aboutItem = new NativeMenuItem(Handler.AppConfig.TrayConfig.AboutButtonTitle ?? "About");
+                    aboutItem.Click += (_, __) => ShowAboutDialog();
+                    menu.Items.Add(aboutItem);
+                }
+                
+                // Add exit button from config
+                if (Handler.AppConfig.TrayConfig != null && Handler.AppConfig.TrayConfig.ExitButtonEnabled == true)
+                {
+                    var exitItem = new NativeMenuItem(Handler.AppConfig.TrayConfig.ExitButtonTitle ?? "Exit");
+                    exitItem.Click += (_, __) => 
+                    {
+                        _configReloadTimer?.Dispose();
+                        _actionSidebar?.Close();
+                        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+                        {
+                            desktop.Shutdown();
+                        }
+                    };
+                    menu.Items.Add(exitItem);
+                }
+                
+                _trayIcon.Menu = menu;
+                
+                Console.WriteLine("Tray icon and menu updated successfully");
+            }
+            catch (Exception ex)
+            {
+                Logging.Error("UpdateTrayIcon", "error", ex.ToString());
+            }
+        }
+        
         public static void ShowAboutDialog()
         {
             try
@@ -248,9 +421,9 @@ namespace NetLock_RMM_Tray_Icon
                 };
 
                 // Set window icon from config
-                try
+                if (!string.IsNullOrWhiteSpace(Handler.AppConfig.TrayConfig?.IconBase64))
                 {
-                    if (!string.IsNullOrEmpty(Handler.AppConfig.TrayConfig?.IconBase64))
+                    try
                     {
                         string base64Data = Handler.AppConfig.TrayConfig.IconBase64;
                         
@@ -268,11 +441,30 @@ namespace NetLock_RMM_Tray_Icon
                             dialog.Icon = new WindowIcon(bitmap);
                         }
                     }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Failed to set window icon for About dialog: {ex.Message}");
+                        Logging.Error("ShowAboutDialog", "Failed to set window icon", ex.ToString());
+                        
+                        // Fallback to default icon if Base64 loading failed
+                        try
+                        {
+                            dialog.Icon = new WindowIcon(System.IO.Path.Combine("Assets", "trayicon.ico"));
+                        }
+                        catch { }
+                    }
                 }
-                catch (Exception ex)
+                else
                 {
-                    Console.WriteLine($"Failed to set window icon for About dialog: {ex.Message}");
-                    Logging.Error("ShowAboutDialog", "Failed to set window icon", ex.ToString());
+                    // Use default icon if Base64 is empty or null
+                    try
+                    {
+                        dialog.Icon = new WindowIcon(System.IO.Path.Combine("Assets", "trayicon.ico"));
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Failed to load default icon for About dialog: {ex.Message}");
+                    }
                 }
 
                 var content = new StackPanel
@@ -281,11 +473,12 @@ namespace NetLock_RMM_Tray_Icon
                     Spacing = 15
                 };
 
-                // Try to load logo from Base64 config, fallback to emoji
+                // Try to load logo from Base64 config, fallback to default icon
                 bool logoLoaded = false;
-                try
+                
+                if (!string.IsNullOrWhiteSpace(Handler.AppConfig.TrayConfig?.IconBase64))
                 {
-                    if (!string.IsNullOrEmpty(Handler.AppConfig.TrayConfig?.IconBase64))
+                    try
                     {
                         string base64Data = Handler.AppConfig.TrayConfig.IconBase64;
                         
@@ -311,11 +504,33 @@ namespace NetLock_RMM_Tray_Icon
                             logoLoaded = true;
                         }
                     }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Failed to load logo from Base64 for About dialog: {ex.Message}");
+                        Logging.Error("ShowAboutDialog", "Failed to load Base64 logo", ex.ToString());
+                    }
                 }
-                catch (Exception ex)
+                
+                // Fallback to default icon if Base64 loading failed or was empty
+                if (!logoLoaded)
                 {
-                    Console.WriteLine($"Failed to load logo from Base64 for About dialog: {ex.Message}");
-                    Logging.Error("ShowAboutDialog", "Failed to load Base64 logo", ex.ToString());
+                    try
+                    {
+                        var bitmap = new Avalonia.Media.Imaging.Bitmap(System.IO.Path.Combine("Assets", "trayicon.ico"));
+                        var logoImage = new Avalonia.Controls.Image
+                        {
+                            Source = bitmap,
+                            Width = 80,
+                            Height = 80,
+                            HorizontalAlignment = HorizontalAlignment.Center
+                        };
+                        content.Children.Add(logoImage);
+                        logoLoaded = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Failed to load default logo for About dialog: {ex.Message}");
+                    }
                 }
                 
                 content.Children.Add(new TextBlock

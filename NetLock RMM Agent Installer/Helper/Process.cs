@@ -21,8 +21,9 @@ namespace Helper
                 Console.WriteLine("[" + DateTime.Now + "] - [Helper._Process.Start] -> Starting process: " + command);
 
                 Process process = new Process();
-                process.StartInfo.UseShellExecute = true;
+                process.StartInfo.UseShellExecute = false;
                 process.StartInfo.CreateNoWindow = true;
+                process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
                 process.StartInfo.FileName = file_name; // example: cmd.exe  
                 process.StartInfo.Arguments = command; // example: /c taskkill /F /IM "NetLock RMM Comm Agent (Windows).exe"
                 process.Start();

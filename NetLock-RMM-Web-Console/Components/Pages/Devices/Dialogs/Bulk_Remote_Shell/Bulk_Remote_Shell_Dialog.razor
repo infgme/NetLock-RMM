@@ -182,6 +182,7 @@
     [Parameter] public List<string> device_ids { get; set; }
     [Parameter] public string tenant_guid { get; set; }
     [Parameter] public string location_guid { get; set; }
+    [Parameter] public string access_key { get; set; }
 
     private string netlock_username = String.Empty;
     private string token = String.Empty;
@@ -195,6 +196,7 @@
         public string Id { get; set; }
         public string Name { get; set; }
         public string Platform { get; set; }
+        public string AccessKey { get; set; }
     }
     
     private List<DeviceInfo> deviceInfos = new List<DeviceInfo>();
@@ -235,12 +237,14 @@
         {
             var name = await Classes.MySQL.Handler.GetDeviceNameById(device_id);
             var platform = await Classes.MySQL.Handler.Get_Device_Platform(device_id);
+            var accessKey = await Classes.MySQL.Handler.GetDeviceAccessKeyById(device_id);
             
             deviceInfos.Add(new DeviceInfo
             {
                 Id = device_id,
                 Name = name,
-                Platform = platform
+                Platform = platform,
+                AccessKey = accessKey
             });
             
             // Initialize output tracking for each device
@@ -404,9 +408,7 @@
     public class Remote_Target_Device
     {
         public string device_id { get; set; }
-        public string device_name { get; set; }
-        public string location_guid { get; set; }
-        public string tenant_guid { get; set; }
+        public string access_key { get; set; }
     }
 
     public class Remote_Command
@@ -622,6 +624,7 @@
                     }, null, timeoutMilliseconds, System.Threading.Timeout.Infinite);
                     
                     deviceTimeoutTimers[deviceInfo.Id] = timer;
+                    
                     // Create the object
                     var adminIdentity = new Remote_Admin_Identity
                     {
@@ -631,9 +634,7 @@
                     var targetDevice = new Remote_Target_Device
                     {
                         device_id = deviceInfo.Id,
-                        device_name = deviceInfo.Name,
-                        tenant_guid = tenant_guid,
-                        location_guid = location_guid
+                        access_key = deviceInfo.AccessKey
                     };
 
                     var command = new Remote_Command

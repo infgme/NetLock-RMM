@@ -125,6 +125,7 @@ namespace NetLock_RMM_Server.Agent.Windows
             public bool? notifications_microsoft_teams { get; set; }
             public bool? notifications_telegram { get; set; }
             public bool? notifications_ntfy_sh { get; set; }
+            public bool? notifications_webhook { get; set; }
         }
 
         public class Sensors_Device_Entity
@@ -172,18 +173,11 @@ namespace NetLock_RMM_Server.Agent.Windows
                 Root_Entity rootData = JsonConvert.DeserializeObject<Root_Entity>(json);
                 Device_Identity_Entity device_identity = rootData.device_identity;
 
-                // Get tenant_id & location_id
-                (int tenant_id, int location_id) = await Helper.Get_Tenant_Location_Id(device_identity.tenant_guid, device_identity.location_guid);
-
-                // Get device_id
-                int device_id = await Helper.Get_Device_Id_By_Access_Key(device_identity.access_key);
-
-                // Get tenant_name & location_name
-                (string tenant_name, string location_name) = await Helper.Get_Tenant_Location_Name(tenant_id, location_id);
-
-                string device_name = device_identity.device_name;
+                string device_name = device_identity.device_name?.Trim() ?? string.Empty;
                 string group_name = string.Empty;
-
+                int tenant_id = 0;
+                int location_id = 0;
+                
                 // Policy information
                 string policy_name = null;
                 string antivirus_settings_json = string.Empty;
@@ -196,23 +190,27 @@ namespace NetLock_RMM_Server.Agent.Windows
                 string tray_icon_settings_json = string.Empty;
                 string agent_settings_json = string.Empty;
 
-                // Log the communicated agent information
-                Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "device_identity.device_name", device_name);
-                Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "location_name", location_name);
-                Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "tenant_name", tenant_name);
-                
                 MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
                 await conn.OpenAsync();
 
-                // Get device group
+                // Get tenant_id, location_id, group_id and names from devices table using access_key
+                int group_id = 0;
+                string tenant_name = string.Empty;
+                string location_name = string.Empty;
+                
                 try
                 {
-                    string query = "SELECT * FROM devices WHERE access_key = @access_key;";
+                    string query = @"SELECT d.tenant_id, d.location_id, d.group_id, t.name as tenant_name, l.name as location_name, g.name as group_name 
+                                    FROM devices d 
+                                    LEFT JOIN tenants t ON d.tenant_id = t.id 
+                                    LEFT JOIN locations l ON d.location_id = l.id 
+                                    LEFT JOIN `groups` g ON d.group_id = g.id 
+                                    WHERE d.access_key = @access_key;";
 
                     MySqlCommand command = new MySqlCommand(query, conn);
                     command.Parameters.AddWithValue("@access_key", device_identity.access_key);
 
-                    Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy (group_name)", "MySQL_Prepared_Query", query);
+                    Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy (device_info)", "MySQL_Prepared_Query", query);
 
                     using (DbDataReader reader = await command.ExecuteReaderAsync())
                     {
@@ -220,7 +218,12 @@ namespace NetLock_RMM_Server.Agent.Windows
                         {
                             while (await reader.ReadAsync())
                             {
-                                group_name = reader["group_name"].ToString();
+                                tenant_id = Convert.ToInt32(reader["tenant_id"]);
+                                location_id = Convert.ToInt32(reader["location_id"]);
+                                group_id = reader["group_id"] != DBNull.Value ? Convert.ToInt32(reader["group_id"]) : 0;
+                                tenant_name = (reader["tenant_name"] != DBNull.Value ? reader["tenant_name"].ToString() : string.Empty)?.Trim() ?? string.Empty;
+                                location_name = (reader["location_name"] != DBNull.Value ? reader["location_name"].ToString() : string.Empty)?.Trim() ?? string.Empty;
+                                group_name = (reader["group_name"] != DBNull.Value ? reader["group_name"].ToString() : string.Empty)?.Trim() ?? string.Empty;
                             }
                         }
                     }
@@ -234,11 +237,16 @@ namespace NetLock_RMM_Server.Agent.Windows
                     //conn.Close();
                 }
 
-                Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "group_name", group_name);
+                // Log the communicated agent information
+                Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "Device Details", 
+                    $"Device Name: {device_name}, Tenant Name: {tenant_name}, Location Name: {location_name}, Group Name: {group_name}, Internal IP: {device_identity.ip_address_internal}, External IP: {external_ip_address}, Domain: {device_identity.domain}");
+                Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "tenant_id", tenant_id.ToString());
+                Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "location_id", location_id.ToString());
+                Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "group_id", group_id.ToString());
 
                 // Get automations from database
                 List<Automation_Entity> automations_list = new List<Automation_Entity>();
-
+                
                 try
                 {
                     string query = "SELECT * FROM automations;";
@@ -271,39 +279,58 @@ namespace NetLock_RMM_Server.Agent.Windows
                 }
 
                 // Filter automations, detect which automation applies to the device and return the policy
+                Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "Automation Count", $"Total automations: {automations_list.Count}");
                 
                 // Device Name
                 foreach (var automation in automations_list)
                 {
-                    if (automation.category == 0 && automation.condition == 0 && automation.expected_result == device_name)
+                    Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "Checking Automation", 
+                        $"Name: {automation.name}, Category: {automation.category}, Condition: {automation.condition}, Expected: '{automation.expected_result}', Device Name: '{device_name}'");
+                    
+                    if (automation.category == 0 && automation.condition == 0 && automation.expected_result?.Trim() == device_name)
                     {
                         policy_name = automation.trigger;
+                        Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "Match Found", $"Device Name matched: {policy_name}");
                         break;
                     }
                 }
 
-                // Tenant
+                // Tenant (compare with tenant_name)
                 if (policy_name == null)
                 {
                     foreach (var automation in automations_list)
                     {
-                        if (automation.category == 0 && automation.condition == 1 && automation.expected_result == tenant_name)
+                        if (automation.category == 0 && automation.condition == 1)
                         {
-                            policy_name = automation.trigger;
-                            break;
+                            Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "Checking Tenant", 
+                                $"Expected: '{automation.expected_result}', Actual: '{tenant_name}'");
+                            
+                            if (automation.expected_result?.Trim() == tenant_name)
+                            {
+                                policy_name = automation.trigger;
+                                Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "Match Found", $"Tenant matched: {policy_name}");
+                                break;
+                            }
                         }
                     }
                 }
 
-                // Location
+                // Location (compare with location_name)
                 if (policy_name == null)
                 {
                     foreach (var automation in automations_list)
                     {
-                        if (automation.category == 0 && automation.condition == 2 && automation.expected_result == location_name)
+                        if (automation.category == 0 && automation.condition == 2)
                         {
-                            policy_name = automation.trigger;
-                            break;
+                            Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "Checking Location", 
+                                $"Expected: '{automation.expected_result}', Actual: '{location_name}'");
+                            
+                            if (automation.expected_result?.Trim() == location_name)
+                            {
+                                policy_name = automation.trigger;
+                                Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "Match Found", $"Location matched: {policy_name}");
+                                break;
+                            }
                         }
                     }
                 }
@@ -313,10 +340,17 @@ namespace NetLock_RMM_Server.Agent.Windows
                 {
                     foreach (var automation in automations_list)
                     {
-                        if (automation.category == 0 && automation.condition == 3 && automation.expected_result == group_name)
+                        if (automation.category == 0 && automation.condition == 3)
                         {
-                            policy_name = automation.trigger;
-                            break;
+                            Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "Checking Group", 
+                                $"Expected: '{automation.expected_result}', Actual: '{group_name}'");
+                            
+                            if (automation.expected_result?.Trim() == group_name)
+                            {
+                                policy_name = automation.trigger;
+                                Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "Match Found", $"Group matched: {policy_name}");
+                                break;
+                            }
                         }
                     }
                 }
@@ -326,10 +360,17 @@ namespace NetLock_RMM_Server.Agent.Windows
                 {
                     foreach (var automation in automations_list)
                     {
-                        if (automation.category == 0 && automation.condition == 4 && automation.expected_result == device_identity.ip_address_internal)
+                        if (automation.category == 0 && automation.condition == 4)
                         {
-                            policy_name = automation.trigger;
-                            break;
+                            Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "Checking Internal IP", 
+                                $"Expected: '{automation.expected_result}', Actual: '{device_identity.ip_address_internal}'");
+                            
+                            if (automation.expected_result?.Trim() == device_identity.ip_address_internal?.Trim())
+                            {
+                                policy_name = automation.trigger;
+                                Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "Match Found", $"Internal IP matched: {policy_name}");
+                                break;
+                            }
                         }
                     }
                 }
@@ -339,10 +380,17 @@ namespace NetLock_RMM_Server.Agent.Windows
                 {
                     foreach (var automation in automations_list)
                     {
-                        if (automation.category == 0 && automation.condition == 5 && automation.expected_result == external_ip_address)
+                        if (automation.category == 0 && automation.condition == 5)
                         {
-                            policy_name = automation.trigger;
-                            break;
+                            Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "Checking External IP", 
+                                $"Expected: '{automation.expected_result}', Actual: '{external_ip_address}'");
+                            
+                            if (automation.expected_result?.Trim() == external_ip_address?.Trim())
+                            {
+                                policy_name = automation.trigger;
+                                Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "Match Found", $"External IP matched: {policy_name}");
+                                break;
+                            }
                         }
                     }
                 }
@@ -352,10 +400,17 @@ namespace NetLock_RMM_Server.Agent.Windows
                 {
                     foreach (var automation in automations_list)
                     {
-                        if (automation.category == 0 && automation.condition == 6 && automation.expected_result == device_identity.domain)
+                        if (automation.category == 0 && automation.condition == 6)
                         {
-                            policy_name = automation.trigger;
-                            break;
+                            Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "Checking Domain", 
+                                $"Expected: '{automation.expected_result}', Actual: '{device_identity.domain}'");
+                            
+                            if (automation.expected_result?.Trim() == device_identity.domain?.Trim())
+                            {
+                                policy_name = automation.trigger;
+                                Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "Match Found", $"Domain matched: {policy_name}");
+                                break;
+                            }
                         }
                     }
                 }
@@ -370,8 +425,7 @@ namespace NetLock_RMM_Server.Agent.Windows
                 {
                     Logging.Handler.Debug("Agent.Windows.Policy_Handler.Get_Policy", "Filter automations (matched)", policy_name);
                 }
-
-                // Policy aus Datenbank holen (unverändert)
+                
                 try
                 {
                     string query = "SELECT * FROM policies WHERE name = @policy_name;";

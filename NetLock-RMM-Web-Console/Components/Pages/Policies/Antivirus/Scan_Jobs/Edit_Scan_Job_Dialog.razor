@@ -768,7 +768,7 @@
                 BackgroundClass = "dialog-blurring"
             };
 
-        var result = await this.DialogService.Show<Shared.Export_Data_Dialog>(string.Empty, new DialogParameters(), options).Result;
+        var result = await (await DialogService.ShowAsync<Shared.Export_Data_Dialog>(string.Empty, new DialogParameters(), options)).Result;
 
         if (result != null && result.Data != null)
         {

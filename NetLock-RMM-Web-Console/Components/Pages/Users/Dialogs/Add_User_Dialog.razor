@@ -1,7 +1,8 @@
-﻿@using MySqlConnector;
+﻿﻿@using MySqlConnector;
 @using System.Data.Common;
 @using System.Text.Json;
 @using System.Security.Claims
+@using MySqlConnector
 
 @inject NavigationManager NavigationManager
 @inject ILocalStorageService localStorage
@@ -20,8 +21,14 @@
         <MudTextField Label="@Localizer["text"]" T="string" @bind-Value="@password" ReadOnly="true" Immediate="@true" />
         <MudButton Class="mt-3 ml-2" Size="Size.Small" Variant="Variant.Filled" Color="Color.Warning" OnClick="Copy_Credentials_To_Clipboard" Disabled="(String.IsNullOrEmpty(username) || String.IsNullOrEmpty(password))">Copy to clipboard</MudButton>
 
-        <MudSelect Class="mt-3" T="string" @bind-Value="role" Label="@Localizer["role"]" AnchorOrigin="Origin.BottomCenter" >
+        <MudSelect Class="mt-3" T="string" @bind-Value="role" Label="@Localizer["role"]" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" >
             <MudSelectItem Value="@("Administrator")" />
+        </MudSelect>
+
+        <MudSelect Class="mt-3" T="string" @bind-Value="auth_mode" Label="Auth Mode" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" >
+            <MudSelectItem Value="@("Password")">Password</MudSelectItem>
+            <MudSelectItem Value="@("SSO")">SSO</MudSelectItem>
+            <MudSelectItem Value="@("Password & SSO")">Password & SSO</MudSelectItem>
         </MudSelect>
     </DialogContent>
     <DialogActions>
@@ -51,6 +58,7 @@
     private string username = String.Empty;
     private string password = String.Empty;
     private string role = "Administrator";
+    private string auth_mode = "Password";
 
     [CascadingParameter]
     private IMudDialogInstance MudDialog { get; set; } = default!;
@@ -98,11 +106,12 @@
             // Username does not exist, so insert new entry
             string password_hashed = BCrypt.HashPassword(password);
 
-            using (MySqlCommand cmd = new MySqlCommand("INSERT INTO `accounts` (`username`, `password`, `role`, `reset_password`, `tenants`) VALUES (@username, @password, @role, 1, '[]');", conn))
+            using (MySqlCommand cmd = new MySqlCommand("INSERT INTO `accounts` (`username`, `password`, `role`, `auth_mode`, `reset_password`, `tenants`) VALUES (@username, @password, @role, @auth_mode, 1, '[]');", conn))
             {
                 cmd.Parameters.AddWithValue("@username", username);
                 cmd.Parameters.AddWithValue("@password", password_hashed);
                 cmd.Parameters.AddWithValue("@role", role);
+                cmd.Parameters.AddWithValue("@auth_mode", auth_mode);
                 await cmd.ExecuteNonQueryAsync();
                 success = true;
             }

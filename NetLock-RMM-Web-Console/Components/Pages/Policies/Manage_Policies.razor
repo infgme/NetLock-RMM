@@ -303,7 +303,7 @@
 
         add_policy_dialog_open = true;
 
-        await this.DialogService.Show<Dialogs.Add_Policy_Dialog>(string.Empty, new DialogParameters(), options).Result;
+        await (await DialogService.ShowAsync<Dialogs.Add_Policy_Dialog>(string.Empty, new DialogParameters(), options)).Result;
 
         add_policy_dialog_open = false;
 
@@ -336,7 +336,7 @@
 
         export_table_dialog_open = true;
 
-        var result = await this.DialogService.Show<Policies.Dialogs.Export_Data_Dialog>(string.Empty, new DialogParameters(), options).Result;
+        var result = await (await DialogService.ShowAsync<Policies.Dialogs.Export_Data_Dialog>(string.Empty, new DialogParameters(), options)).Result;
 
         export_table_dialog_open = false;
 

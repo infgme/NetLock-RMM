@@ -8,6 +8,7 @@
 @inject ISnackbar Snackbar
 @inject IStringLocalizer<Pages.Tenants.Dialogs.Tenant_Management.Delete_Tenant_Dialog> Localizer
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NetLock_RMM_Web_Console.Classes.Helper.TenantUpdateService TenantUpdateService
 
 <AuthorizeView>
     <NotAuthorized>
@@ -91,7 +92,11 @@
             this.Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
             this.Snackbar.Add(Localizer["deleted"], Severity.Success);
 
-            Redirect("/tenants", true);
+            // Notify NavMenu to reload tenant data
+            TenantUpdateService.NotifyTenantUpdated();
+            
+            this.MudDialog.Close(DialogResult.Ok("success"));
+            Redirect("/tenants", false);
         }
         else
         {
@@ -107,8 +112,5 @@
     {
         NavigationManager.NavigateTo(Application_Paths.redirect_path);
         NavigationManager.NavigateTo(path);
-
-        if (refresh)
-            NavigationManager.Refresh(true);
     }
 }

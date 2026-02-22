@@ -239,15 +239,25 @@ namespace Global.Jobs
                         {
                             Logging.Jobs("Jobs.Time_Scheduler.Check_Execution", "System boot", "name: " + job_item.name + " id: " + job_item.id + " last_run: " + DateTime.Parse(job_item.last_run ?? DateTime.Now.ToString()) + " Last boot: " + os_up_time.ToString());
 
-                            // Check if last run is empty, if so set it to now
+                            // Check if last run is empty
                             if (String.IsNullOrEmpty(job_item.last_run))
                             {
-                                job_item.last_run = DateTime.Now.ToString();
+                                // Only execute if the last boot was within the last 10 minutes
+                                // This prevents the job from executing when newly created on a system that has been running for a while
+                                if (DateTime.Now - os_up_time <= TimeSpan.FromMinutes(10))
+                                {
+                                    execute = true;
+                                }
+                                
+                                // Set last_run to the current boot time to prevent re-execution until next reboot
+                                job_item.last_run = os_up_time.ToString();
                                 WriteEncryptedJob(job, job_item);
                             }
-
-                            if (DateTime.Parse(job_item.last_run) < os_up_time)
+                            else if (DateTime.Parse(job_item.last_run) < os_up_time)
+                            {
+                                // Job was last run before the current boot, so execute it
                                 execute = true;
+                            }
                         }
                         else if (job_item.time_scheduler_type == 1) // date & time
                         {

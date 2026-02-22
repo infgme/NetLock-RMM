@@ -78,5 +78,40 @@ namespace NetLock_RMM_Web_Console.Classes.Helper
                 return String.Empty;
             }
         }
+
+        public static async Task<string> POST_Request_With_Api_Key(string url, bool membersPortal)
+        {
+            try
+            {
+                string api_key = await Classes.MySQL.Handler.Get_Api_Key(membersPortal);
+
+                using (var httpClient = new HttpClient())
+                {
+                    // Set Header
+                    httpClient.DefaultRequestHeaders.Add("X-Api-Key", api_key);
+
+                    // POST Send request without body
+                    var response = await httpClient.PostAsync(url, null);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        // Read response
+                        var result = await response.Content.ReadAsStringAsync();
+                        Logging.Handler.Debug("Online_Mode.Handler.POST_Request_With_Api_Key", "Result", result);
+                        return result;
+                    }
+                    else
+                    {
+                        // Error handling
+                        Logging.Handler.Debug("Online_Mode.Handler.POST_Request_With_Api_Key", "Request failed", response.ReasonPhrase);
+                        return String.Empty;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logging.Handler.Error("Online_Mode.Handler.POST_Request_With_Api_Key", "General error", ex.ToString());
+                return String.Empty;
+            }
+        }
     }
 }

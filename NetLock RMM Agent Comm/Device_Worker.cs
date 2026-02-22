@@ -33,11 +33,13 @@ namespace NetLock_RMM_Agent_Comm
         public static string update_server = string.Empty;
         public static string trust_server = string.Empty;
         public static string file_server = string.Empty;
+        public static string relay_server = string.Empty;
         public static bool communication_server_status = false;
         public static bool remote_server_status = false;
         public static bool trust_server_status = false;
         public static bool update_server_status = false;
         public static bool file_server_status = false;
+        public static bool relay_server_status = false;
 
         // Agent settings
         public static bool agentAutoUpdateEnabled = false;

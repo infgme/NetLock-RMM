@@ -141,6 +141,30 @@ namespace Global.Initialization
                         Logging.Error("Initialization.Check_Connection.Check_Servers", "File server connection failed.", "");
                     }
                 }
+                
+                // Check connections to relay server. Split relay_servers with "," and check each server
+                values = new List<string>(Configuration.Agent.relay_servers.Split(','));
+                
+                foreach (var value in values)
+                {
+                    // Remove whitespace
+                    value.Trim();
+
+                    if (await Hostname_IP_Port(value, "relay_servers"))
+                    {
+                        Device_Worker.relay_server = value;
+                        Device_Worker.relay_server_status = true;
+
+                        Logging.Debug("Initialization.Check_Connection.Check_Servers", "Relay server connection successful.", "");
+                        break;
+                    }
+                    else
+                    {
+                        Device_Worker.relay_server_status = false;
+
+                        Logging.Error("Initialization.Check_Connection.Check_Servers", "Relay server connection failed.", "");
+                    }
+                }
             }
             catch (Exception ex)
             {

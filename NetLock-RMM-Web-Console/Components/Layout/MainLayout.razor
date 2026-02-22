@@ -1,9 +1,14 @@
+@using System.Data
 @using MySqlConnector;
 @using System.Data.Common;
+@using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @using Microsoft.AspNetCore.DataProtection
+@using NetLock_RMM_Web_Console.Classes.Members_Portal
+@using NetLock_RMM_Web_Console.Classes.Theme
 
 @inherits LayoutComponentBase
+@implements IDisposable
 
 @inject NavigationManager NavigationManager
 @inject IDialogService DialogService
@@ -12,21 +17,24 @@
 @inject IJSRuntime JSRuntime
 @inject IDataProtectionProvider DataProtectionProvider
 @inject ProtectedSessionStorage SessionStorage
+@inject ThemeUpdateService ThemeUpdateService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
 
 <style>
     /* ===== MODERN DESIGN SYSTEM (NetLock Style) ===== */
     
     /* CSS Variables for Theme Colors */
     :root {
-        --primary-color: @(GetColorString(_theme?.PaletteLight?.Primary));
-        --primary-dark: @(DarkenColor(GetColorString(_theme?.PaletteLight?.Primary)));
-        --primary-rgb: @(HexToRgb(GetColorString(_theme?.PaletteLight?.Primary)));
+        --primary-color: @(GetColorString(_theme?.PaletteLight?.Primary, false));
+        --primary-dark: @(DarkenColor(GetColorString(_theme?.PaletteLight?.Primary, false)));
+        --primary-rgb: @(HexToRgb(GetColorString(_theme?.PaletteLight?.Primary, false)));
     }
 
     .mud-theme-dark {
-        --primary-color: @(GetColorString(_theme?.PaletteDark?.Primary));
-        --primary-dark: @(DarkenColor(GetColorString(_theme?.PaletteDark?.Primary)));
-        --primary-rgb: @(HexToRgb(GetColorString(_theme?.PaletteDark?.Primary)));
+        --primary-color: @(GetColorString(_theme?.PaletteDark?.Primary, true));
+        --primary-dark: @(DarkenColor(GetColorString(_theme?.PaletteDark?.Primary, true)));
+        --primary-rgb: @(HexToRgb(GetColorString(_theme?.PaletteDark?.Primary, true)));
     }
     
     /* Apply Poppins Font globally */
@@ -38,6 +46,22 @@
     .mud-appbar {
         position: relative;
         overflow: hidden;
+    }
+
+    /* Logo Pulse Animation */
+    .logo-pulse {
+        animation: logo-pulse 3s infinite ease-in-out;
+    }
+
+    @@keyframes logo-pulse {
+        0%, 100% {
+            opacity: 1;
+            filter: drop-shadow(0 0 5px rgba(237, 13, 50, 0.5));
+        }
+        50% {
+            opacity: 0.7;
+            filter: drop-shadow(0 0 15px rgba(237, 13, 50, 0.8));
+        }
     }
 
     /* Modern Card styling */
@@ -223,6 +247,23 @@
         border-color: rgba(var(--primary-rgb), 0.2) !important;
     }
 
+    /* AppBar Logo Light/Dark Mode Visibility */
+    .appbar-logo-light {
+        display: inline-block;
+    }
+
+    .appbar-logo-dark {
+        display: none;
+    }
+
+    .mud-theme-dark .appbar-logo-light {
+        display: none;
+    }
+
+    .mud-theme-dark .appbar-logo-dark {
+        display: inline-block;
+    }
+
 
     /* Modern Switch styling - keep default animations */
     .mud-switch .mud-switch-thumb {
@@ -254,6 +295,35 @@
         background-color: rgba(66, 66, 66, 0.95) !important;
         color: #FFFFFF !important;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+    }
+
+    /* Update Available Notification Animation */
+    .update-available-icon {
+        animation: update-pulse 2s infinite ease-in-out;
+    }
+
+    @@keyframes update-pulse {
+        0%, 100% {
+            transform: scale(1);
+            color: #ff9800;
+        }
+        50% {
+            transform: scale(1.2);
+            color: #f57c00;
+        }
+    }
+
+    .update-badge {
+        animation: badge-bounce 1.5s infinite ease-in-out;
+    }
+
+    @@keyframes badge-bounce {
+        0%, 100% {
+            transform: translateY(0);
+        }
+        50% {
+            transform: translateY(-3px);
+        }
     }
 
     /* Seasonal Events - Only in AppBar */
@@ -601,11 +671,14 @@
                 
                 @if (!string.IsNullOrEmpty(NetLock_RMM_Web_Console.Configuration.Web_Console.logoBase64))
                 {
-                    <MudImage Src="@($"data:image/png;base64,{NetLock_RMM_Web_Console.Configuration.Web_Console.logoBase64}")" Alt="Logo" Height="35" Class="mr-3" Style="max-width: 150px; object-fit: contain;" />
+                    <MudImage Src="@($"data:image/png;base64,{NetLock_RMM_Web_Console.Configuration.Web_Console.logoBase64}")" Alt="Logo" Height="35" Class="mr-3 logo-pulse" Style="max-width: 150px; object-fit: contain;" />
                 }
                 else
                 {
-                    <MudImage Src="media/images/NetLock-RMM-Logo-Transparent.svg" Alt="Favicon" Width="35" Height="35" Class="mr-3" />
+                    <!-- Light Mode Logo -->
+                    <MudImage Src="media/images/NetLock-RMM-Logo-Transparent.png" Alt="NetLock RMM Logo" Height="35" Class="mr-3 logo-pulse appbar-logo-light" Style="max-width: 150px; object-fit: contain;" />
+                    <!-- Dark Mode Logo -->
+                    <MudImage Src="media/images/NetLock-Logo-Dark-Transparent.png" Alt="NetLock RMM Logo" Height="35" Class="mr-3 logo-pulse appbar-logo-dark" Style="max-width: 150px; object-fit: contain;" />
                 }
                 <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
 
@@ -619,30 +692,56 @@
 
                 <MudSpacer />
 
+                <!-- Update Available Notification -->
+                @if (_updateAvailable && !_updateForceRequired)
+                {
+                    <MudTooltip Text="@GetUpdateTooltipText()">
+                        <MudBadge Content="@("!")" Color="Color.Warning" Overlap="true" Class="update-badge">
+                            <MudIconButton Icon="@Icons.Material.Filled.SystemUpdateAlt" 
+                                           Color="Color.Warning" 
+                                           Class="update-available-icon"
+                                           OnClick="@ShowUpdateInfoDialog"
+                                           Title="Update available" />
+                        </MudBadge>
+                    </MudTooltip>
+                }
+
                 <!-- Normal icon buttons for larger screens -->
                 <div class="d-none d-md-flex">
                     <MudIconButton Icon="@Icons.Material.Filled.Home" Color="Color.Inherit" Href="/home" Title="Home" />
-                    <MudIconButton Icon="@Icons.Material.Filled.InstallDesktop" Color="Color.Inherit" Title="Agent Download" OnClick="Agent_Download_Dialog" />
-                    <MudIconButton Icon="@(DarkLightModeButtonIcon)" Color="Color.Inherit" OnClick="@DarkModeToggle" />
-                    <MudIconButton Href="https://github.com/0x101-Cyber-Security/NetLock-RMM/issues" Target="_blank" Icon="@Icons.Material.Filled.BugReport" Color="Color.Inherit" Title="@Localizer["report_a_bug"]" />
+                    @if (permissions_devices_unauthorized_enabled)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.InstallDesktop" Color="Color.Inherit" Title="Agent Download" OnClick="@Agent_Download_Dialog" />
+                    }
+                    <MudIconButton Icon="@(DarkLightModeButtonIcon)" Color="Color.Inherit" OnClick="@ShowDarkModeInfoDialog" Title="Dark/Light Mode" />
                     <MudIconButton Icon="@Icons.Custom.Brands.GitHub" Color="Color.Inherit" Href="https://github.com/0x101-Cyber-Security/NetLock-RMM" Title="GitHub" Target="_blank" />
-                    <MudIconButton Icon="@Icons.Material.Filled.MenuBook" Color="Color.Inherit" Href="https://docs.netlockrmm.com/en/home" Title="@Localizer["documentation"]" Target="_blank" />
-                    <MudIconButton Icon="@Icons.Material.Filled.Support" Color="Color.Inherit" Href="https://members.netlockrmm.com/" Title="Support" Target="_blank" />
+                    <MudIconButton Icon="@Icons.Material.Filled.MenuBook" Color="Color.Inherit" Href="https://netlockrmm.com/docs" Title="@Localizer["documentation"]" Target="_blank" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Support" Color="Color.Inherit" OnClick="@ShowSupportDialog" Title="Support" />
                     <MudIconButton Icon="@Icons.Custom.Brands.Discord" Color="Color.Inherit" Href="https://discord.gg/HqUpZgtX4U" Title="Discord" Target="_blank" />
                     <MudIconButton Icon="@Icons.Material.Filled.Gamepad" Color="Color.Inherit" OnClick="@OpenGameDialog" Title="Tickets open? Hah, play a game instead! :')" Target="_blank" />
                     <MudIconButton Icon="@Icons.Material.Filled.Logout" Color="Color.Inherit" Title="@Localizer["logout"]" Href="/logout" Class="d-none d-md-flex" />
                 </div>
-
+                
                 <!-- Dropdown menu for mobile view -->
                 <MudMenu Icon="@Icons.Material.Filled.MoreVert" Color="Color.Inherit" Class="d-md-none">
-                    <MudMenuItem OnClick="Agent_Download_Dialog">@Localizer["agent_download"]</MudMenuItem>
+                    @if (_updateAvailable && !_updateForceRequired)
+                    {
+                        <MudMenuItem OnClick="@ShowUpdateInfoDialog" Icon="@Icons.Material.Filled.SystemUpdateAlt" IconColor="Color.Warning">Update available (v@(_latestVersion))</MudMenuItem>
+                        <MudDivider />
+                    }
+                    <MudMenuItem Href="/home">Home</MudMenuItem>
+                    @if (permissions_devices_unauthorized_enabled)
+                    {
+                        <MudMenuItem OnClick="@Agent_Download_Dialog">@Localizer["agent_download"]</MudMenuItem>
+                    }
+                    <MudMenuItem OnClick="@ShowDarkModeInfoDialog" Icon="@(DarkLightModeButtonIcon)">Dark/Light Mode</MudMenuItem>
                     <MudMenuItem Href="https://github.com/0x101-Cyber-Security/NetLock-RMM/issues" Target="_blank">@Localizer["report_a_bug"]</MudMenuItem>
                     <MudMenuItem Href="https://github.com/0x101-Cyber-Security/NetLock-RMM" Target="_blank">GitHub</MudMenuItem>
                     <MudMenuItem Href="https://docs.netlockrmm.com/en/home" Target="_blank">@Localizer["documentation"]</MudMenuItem>
-                    <MudMenuItem Href="https://members.netlockrmm.com" Target="_blank">@Localizer["support"]</MudMenuItem>
+                    <MudMenuItem OnClick="@ShowSupportDialog">@Localizer["support"]</MudMenuItem>
                     <MudMenuItem Href="https://discord.gg/HqUpZgtX4U" Target="_blank">Discord</MudMenuItem>
                     <MudMenuItem Href="/logout">@Localizer["logout"]</MudMenuItem>
-                    <MudIconButton Icon="@Icons.Material.Filled.Logout" Color="Color.Inherit"  Class="d-none d-md-flex" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Logout" Color="Color.Inherit" Class="d-none d-md-flex"/>
                 </MudMenu>
             </MudAppBar>
 
@@ -667,11 +766,48 @@
 </div>
 
 @code {
+    
+    #region Permissions System
+    
+    private bool permissions_devices_unauthorized_enabled = false;
+    
+    private async Task<bool> Permissions()
+    {
+        try
+        {
+            bool logout = false;
+
+            // Get the current user from the authentication state
+            var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+            
+            string netlock_username = user.FindFirst(ClaimTypes.Email)?.Value;
+
+            // Load other permissions here
+            permissions_devices_unauthorized_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "devices_unauthorized_enabled");
+            
+            // All fine? Nice.
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("/dashboard -> Permissions", "Error", ex.ToString());
+            return false;
+        }
+    }
+
+    #endregion
+    
     private bool _drawerOpen = true;
     private bool _isDarkMode = false;
     private MudTheme? _theme = null;
     private MudThemeProvider _mudThemeProvider;
     private SeasonalEvent _currentSeasonalEvent = SeasonalEvent.None;
+
+    // Update availability state
+    private bool _updateAvailable = false;
+    private bool _updateForceRequired = false;
+    private string _latestVersion = string.Empty;
+    private int _daysSinceRelease = 0;
 
     // Seasonal Event Enum
     private enum SeasonalEvent
@@ -686,7 +822,7 @@
         Autumn               // September 22 - December 9
     }
 
-    //OSSCH_START 33d8cb08-b78e-4071-aca7-6f45eac040f5 //OSSCH_END
+    //OSSCH_START 4881a547-cccd-456a-bd97-c1863a567c29 //OSSCH_END
     
     private SeasonalEvent DetectSeasonalEvent()
     {
@@ -729,11 +865,78 @@
     {
         if (firstRender)
         {
-            _isDarkMode = await _mudThemeProvider.GetSystemPreference();
+            await Permissions();
+
+            _isDarkMode = await _mudThemeProvider.GetSystemDarkModeAsync();
 
             StateHasChanged();
 
             //await Check_Server_Health(); // Needs rewrite
+
+            // Check for updates on application start
+            await CheckUpdateAvailability();
+
+            // Start periodic version check timer (every 60 minutes)
+            StartVersionCheckTimer();
+        }
+    }
+
+    private string GetUpdateTooltipText()
+    {
+        return $"Update available: v{_latestVersion} (released {_daysSinceRelease} days ago)";
+    }
+
+    private bool _isCheckingUpdate = false;
+
+    private async Task CheckUpdateAvailability()
+    {
+        // Prevent concurrent checks
+        if (_isCheckingUpdate)
+            return;
+
+        // Don't check if we're already on the update-required page
+        if (NavigationManager.Uri.Contains("/update-required"))
+            return;
+
+        _isCheckingUpdate = true;
+
+        try
+        {
+            var versionCheck = await Classes.Members_Portal.VersionCheck.CheckVersionAsync();
+
+            if (versionCheck != null)
+            {
+                // Only update state if values changed
+                bool stateChanged = _updateAvailable != versionCheck.IsOutdated ||
+                                    _updateForceRequired != versionCheck.RequiresForceUpdate ||
+                                    _latestVersion != versionCheck.LatestVersion ||
+                                    _daysSinceRelease != versionCheck.DaysSinceRelease;
+
+                _updateAvailable = versionCheck.IsOutdated;
+                _updateForceRequired = versionCheck.RequiresForceUpdate;
+                _latestVersion = versionCheck.LatestVersion;
+                _daysSinceRelease = versionCheck.DaysSinceRelease;
+
+                // Redirect to update-required page if force update is needed (and not already there)
+                if (versionCheck.RequiresForceUpdate)
+                {
+                    NavigationManager.NavigateTo("/update-required", true);
+                    return;
+                }
+
+                if (stateChanged)
+                {
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("MainLayout.CheckUpdateAvailability", "Error", ex.ToString());
+        }
+        finally
+        {
+            _isCheckingUpdate = false;
         }
     }
    
@@ -742,9 +945,36 @@
         _drawerOpen = !_drawerOpen;
     }
 
-    private void DarkModeToggle()
+    private async Task ShowDarkModeInfoDialog()
     {
-        _isDarkMode = !_isDarkMode;
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            MaxWidth = MaxWidth.Small,
+            FullWidth = true,
+            BackgroundClass = "dialog-blurring",
+        };
+
+        await DialogService.ShowMessageBox(
+            "Dark/Light Mode",
+            new MarkupString(
+                "<div style='line-height: 1.6;'>" +
+                "<p><b>The dark/light mode is controlled by your browser or operating system settings.</b></p>" +
+                "<br/>" +
+                "<p>To change the appearance:</p>" +
+                "<ul style='margin-left: 20px; margin-top: 10px;'>" +
+                "<li><b>Windows:</b> Settings → Personalization → Colors → Choose your mode</li>" +
+                "<li><b>macOS:</b> System Preferences → General → Appearance</li>" +
+                "<li><b>Linux:</b> Depends on your desktop environment settings</li>" +
+                "<li><b>Browser:</b> Some browsers allow overriding in their settings</li>" +
+                "</ul>" +
+                "<br/>" +
+                "<p style='color: gray; font-size: 0.9em;'>The web console will automatically follow your system preference.</p>" +
+                "</div>"
+            ),
+            yesText: "OK",
+            options: options
+        );
     }
 
     private readonly PaletteLight _lightPalette = new()
@@ -904,136 +1134,15 @@
                 BackgroundClass = "dialog-blurring",
             };
 
-        var result = await this.DialogService.Show<Layout.Agent_Download.Agent_Download_Dialog>(string.Empty, options).Result;
+        var result = await (await DialogService.ShowAsync<Layout.Agent_Download.Agent_Download_Dialog>(string.Empty, options)).Result;
 
         if (result.Canceled)
             return;
 
         Logging.Handler.Debug("/MainLayout -> Event_Details_Dialog", "Result", result.Data.ToString());
     }
-
-    // Check servers health
-    private async Task Check_Server_Health()
-    {
-        // Check if user is authenticated
-        var username = await SessionStorage.GetAsync<string>("username");
-        var password = await SessionStorage.GetAsync<string>("password");
-        
-        if(!await Classes.Authentication.User.Verify_User(username.Value, password.Value))
-            return;
-
-        var options = new DialogOptions
-            {
-                CloseButton = true,
-                FullWidth = true,
-                MaxWidth = MaxWidth.Medium,
-                BackgroundClass = "dialog-blurring",
-            };
-
-        MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
-
-        try
-        {
-            await conn.OpenAsync();
-
-            string query = "SELECT * FROM servers;";
-
-            MySqlCommand cmd = new MySqlCommand(query, conn);
-
-            Logging.Handler.Debug("/mainlayout", "Check_Server_Health", query);
-
-            using (DbDataReader reader = await cmd.ExecuteReaderAsync())
-            {
-                if (reader.HasRows)
-                {
-                    while (await reader.ReadAsync())
-                    {
-                        DateTime lastHeartbeat;
-
-                        // Check if the last hearthbeat is older than 10 minutes
-                        if (reader["docker"].ToString() == "0") // Do not check hearthbeat if running in docker because downed containers will spam the user
-                        {
-                            if (DateTime.TryParse(reader["hearthbeat"].ToString(), out lastHeartbeat))
-                            {
-                                if ((DateTime.Now - lastHeartbeat).TotalMinutes > 5)
-                                {
-                                    await DialogService.ShowMessageBox(
-                                        Localizer["warning"],
-                                        Localizer["the following netlock rmm backend server seems to be down:"]
-                                        + " Name: " + reader["name"].ToString()
-                                        + " " + Localizer["ip address"] + ": " + reader["ip_address"].ToString()
-                                        + " " + Localizer["last hearthbeat"] + ": " + reader["hearthbeat"].ToString(),
-                                        yesText: Localizer["dismiss"],
-                                        options: options
-                                    );
-                                }
-                            }
-                        }
-
-                        // Check if cpu usage is above 90%
-                        if (int.TryParse(reader["cpu_usage"].ToString(), out int cpu_usage))
-                        {
-                            if (cpu_usage > 90)
-                            {
-                                await DialogService.ShowMessageBox(
-                                    Localizer["warning"],
-                                    Localizer["the following netlock rmm backend server seems to have high cpu usage:"]
-                                    + " Name: " + reader["name"].ToString()
-                                    + " " + Localizer["ip address"] + ": " + reader["ip_address"].ToString()
-                                    + " " + Localizer["cpu usage"] + ": " + reader["cpu_usage"].ToString() + "%",
-                                    yesText: Localizer["dismiss"],
-                                    options: options
-                                );
-                            }
-                        }
-
-                        // Check if ram usage is above 90%
-                        if (int.TryParse(reader["ram_usage"].ToString(), out int ram_usage))
-                        {
-                            if (ram_usage > 90)
-                            {
-                                await DialogService.ShowMessageBox(
-                                    Localizer["warning"],
-                                    Localizer["the following netlock rmm backend server seems to have high ram usage:"]
-                                    + " Name: " + reader["name"].ToString()
-                                    + " " + Localizer["ip address"] + ": " + reader["ip_address"].ToString()
-                                    + " " + Localizer["ram usage"] + ": " + reader["ram_usage"].ToString() + "%",
-                                    yesText: Localizer["dismiss"],
-                                    options: options
-                                );
-                            }
-                        }
-
-                        // Check if disk space is below 5%
-                        if (int.TryParse(reader["disk_usage"].ToString(), out int disk_space))
-                        {
-                            if (disk_space > 90)
-                            {
-                                await DialogService.ShowMessageBox(
-                                    Localizer["warning"],
-                                    Localizer["the following netlock rmm backend server seems to have low disk space:"]
-                                    + " Name: " + reader["name"].ToString()
-                                    + " " + Localizer["ip address"] + ": " + reader["ip_address"].ToString()
-                                    + " " + Localizer["disk space used"] + ": " + reader["disk_usage"].ToString() + "%",
-                                    yesText: Localizer["dismiss"],
-                                    options: options
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Logging.Handler.Error("/mainlayout", "Check_Server_Health", ex.ToString());
-        }
-        finally
-        {
-            await conn.CloseAsync();
-        }
-    }
     
+    // Open Virus Defense Game Dialog
     private async Task OpenGameDialog()
     {
         var options = new DialogOptions
@@ -1048,16 +1157,16 @@
         {
         };
 
-        DialogService.Show<Pages.Community.Events.Virus_Defense_Dialog>(String.Empty, parameters, options);
+        await DialogService.ShowAsync<Pages.Community.Events.Virus_Defense_Dialog>(String.Empty, parameters, options);
     }
     
     // Helper method to get color string from MudColor or fallback
-    private string GetColorString(MudBlazor.Utilities.MudColor? color)
+    private string GetColorString(MudBlazor.Utilities.MudColor? color, bool isDarkPalette = false)
     {
         if (color == null || string.IsNullOrEmpty(color.Value))
         {
-            // Return default based on current mode
-            return _isDarkMode ? "#ED0D32" : "#910012";
+            // Return default based on the palette type (not current mode)
+            return isDarkPalette ? "#ED0D32" : "#910012";
         }
         return color.Value;
     }
@@ -1148,6 +1257,92 @@
         }
         
         return "#b30015"; // Default fallback
+    }
+
+    #region Version Check Timer
+
+    private System.Threading.Timer? _versionCheckTimer;
+
+    private void StartVersionCheckTimer()
+    {
+        // Start periodic version check every 60 minutes
+        _versionCheckTimer = new System.Threading.Timer(async _ =>
+        {
+            try
+            {
+                var versionCheck = await Classes.Members_Portal.VersionCheck.CheckVersionAsync();
+
+                if (versionCheck != null)
+                {
+                    // Update UI state
+                    _updateAvailable = versionCheck.IsOutdated;
+                    _updateForceRequired = versionCheck.RequiresForceUpdate;
+                    _latestVersion = versionCheck.LatestVersion;
+                    _daysSinceRelease = versionCheck.DaysSinceRelease;
+
+                    if (versionCheck.RequiresForceUpdate)
+                    {
+                        await InvokeAsync(() =>
+                        {
+                            NavigationManager.NavigateTo("/update-required", true);
+                        });
+                    }
+                    else
+                    {
+                        await InvokeAsync(StateHasChanged);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logging.Handler.Error("MainLayout.VersionCheckTimer", "Error", ex.ToString());
+            }
+        }, null, TimeSpan.FromMinutes(60), TimeSpan.FromMinutes(60));
+    }
+
+    private async Task ShowUpdateInfoDialog()
+    {
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            FullWidth = true,
+            MaxWidth = MaxWidth.Medium,
+            BackgroundClass = "dialog-blurring",
+        };
+
+        var parameters = new DialogParameters
+        {
+            { "LatestVersion", _latestVersion },
+            { "CurrentVersion", Application_Settings.db_version },
+            { "DaysSinceRelease", _daysSinceRelease }
+        };
+
+        await DialogService.ShowAsync<Shared.UpdateAvailableDialog>("Update Available", parameters, options);
+    }
+
+    #endregion
+
+    #region Support Dialog
+
+    private async Task ShowSupportDialog()
+    {
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            FullWidth = true,
+            MaxWidth = MaxWidth.Medium,
+            BackgroundClass = "dialog-blurring",
+        };
+
+        await DialogService.ShowAsync<Shared.SupportDialog>("Support", options);
+    }
+
+    #endregion
+
+    public void Dispose()
+    {
+        _versionCheckTimer?.Dispose();
+        ThemeUpdateService.OnThemeUpdated -= OnThemeUpdated;
     }
 }
 

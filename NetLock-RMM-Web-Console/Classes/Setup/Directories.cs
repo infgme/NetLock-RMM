@@ -23,6 +23,9 @@ namespace NetLock_RMM_Web_Console.Classes.Setup
 
             if (!Directory.Exists(Application_Paths.internal_recordings_dir))
                 Directory.CreateDirectory(Application_Paths.internal_recordings_dir);
+
+            if (!Directory.Exists(Application_Paths.internal_recordings_zipped_dir))
+                Directory.CreateDirectory(Application_Paths.internal_recordings_zipped_dir);
         }
         
         public static void Delete_Directories()

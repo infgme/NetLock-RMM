@@ -1,0 +1,338 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="550" d:DesignHeight="600"
+        x:Class="NetLock_RMM_Relay_App.Windows.LoginWindow"
+        Title="NetLock RMM Relay App - Login"
+        Width="550" Height="700"
+        MinWidth="500" MinHeight="650"
+        WindowStartupLocation="CenterScreen"
+        CanResize="False"
+        Icon="/Assets/logo.png">
+    
+    <Window.Styles>
+        <!-- Window Background -->
+        <Style Selector="Window">
+            <Setter Property="Background" Value="{DynamicResource SystemChromeLowColor}"/>
+        </Style>
+        
+        <!-- Title -->
+        <Style Selector="TextBlock.title">
+            <Setter Property="FontSize" Value="28"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+        
+        <Style Selector="TextBlock.subtitle">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}"/>
+            <Setter Property="Opacity" Value="0.7"/>
+            <Setter Property="Margin" Value="0,0,0,40"/>
+        </Style>
+        
+        <!-- Labels -->
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+        
+        <!-- TextBox -->
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Margin" Value="0,0,0,20"/>
+            <Setter Property="CornerRadius" Value="6"/>
+        </Style>
+        
+        <Style Selector="TextBox:focus">
+            <Setter Property="BorderBrush" Value="#910012"/>
+            <Setter Property="BorderThickness" Value="2"/>
+        </Style>
+        
+        <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+            <Setter Property="BorderBrush" Value="#910012"/>
+        </Style>
+        
+        <!-- CheckBox - NetLock Red -->
+        <Style Selector="CheckBox:checked /template/ Border#NormalRectangle">
+            <Setter Property="Background" Value="#910012"/>
+            <Setter Property="BorderBrush" Value="#910012"/>
+        </Style>
+        
+        <Style Selector="CheckBox:checked:pointerover /template/ Border#NormalRectangle">
+            <Setter Property="Background" Value="#7A000F"/>
+            <Setter Property="BorderBrush" Value="#7A000F"/>
+        </Style>
+        
+        <Style Selector="CheckBox:checked /template/ Path#CheckGlyph">
+            <Setter Property="Stroke" Value="#FFFFFF"/>
+        </Style>
+        
+        <Style Selector="CheckBox:pointerover /template/ Border#NormalRectangle">
+            <Setter Property="BorderBrush" Value="#910012"/>
+        </Style>
+        
+        <!-- Primary Button - NetLock Red -->
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="#910012"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="Padding" Value="0,14"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,10,0,0"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        
+        <Style Selector="Button.primary:pointerover">
+            <Setter Property="Background" Value="#7A000F"/>
+        </Style>
+        
+        <Style Selector="Button.primary:disabled">
+            <Setter Property="Background" Value="rgba(145,0,18,0.3)"/>
+            <Setter Property="Foreground" Value="rgba(255,255,255,0.5)"/>
+            <Setter Property="Opacity" Value="1"/>
+            <Setter Property="Cursor" Value="Arrow"/>
+        </Style>
+        
+        <!-- Error Message - NetLock Error Red -->
+        <Style Selector="Border.error-container">
+            <Setter Property="Background" Value="rgba(220,53,69,0.1)"/>
+            <Setter Property="BorderBrush" Value="#DC3545"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="15"/>
+            <Setter Property="Margin" Value="0,15,0,0"/>
+        </Style>
+        
+        <Style Selector="TextBlock.error">
+            <Setter Property="Foreground" Value="#DC3545"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        
+        <!-- Success Message - NetLock Success Green -->
+        <Style Selector="Border.success-container">
+            <Setter Property="Background" Value="rgba(0,163,68,0.1)"/>
+            <Setter Property="BorderBrush" Value="#00A344"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="15"/>
+            <Setter Property="Margin" Value="0,15,0,0"/>
+        </Style>
+        
+        <Style Selector="TextBlock.status">
+            <Setter Property="Foreground" Value="#00A344"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+        
+        <!-- Info Box -->
+        <Style Selector="Border.info-box">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="15"/>
+            <Setter Property="Margin" Value="0,0,0,30"/>
+        </Style>
+        
+        <Style Selector="TextBlock.info">
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}"/>
+            <Setter Property="Opacity" Value="0.7"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+    </Window.Styles>
+    
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" 
+                  VerticalScrollBarVisibility="Auto">
+        <Grid Margin="50" MinHeight="600">
+            <StackPanel VerticalAlignment="Top" Margin="0,40">
+                <!-- Header -->
+                <TextBlock Classes="title" 
+                           Text="Relay App Login"
+                           HorizontalAlignment="Center"/>
+                <TextBlock Classes="subtitle" 
+                           Text="Connect to your NetLock RMM agents securely"
+                           HorizontalAlignment="Center"/>
+                
+                <!-- Info Box -->
+                <Border Classes="info-box">
+                    <StackPanel>
+                        <TextBlock Text="Quick Setup"
+                                   FontWeight="SemiBold" 
+                                   FontSize="13"
+                                   Foreground="rgba(255,255,255,0.95)"
+                                   Margin="0,0,0,8"/>
+                        <TextBlock Classes="info" 
+                                   Text="1. Enter your backend server URL (e.g., https://nl-backend.example.tld)"/>
+                        <TextBlock Classes="info" 
+                                   Text="2. Enter your relay server URL (e.g., https://nl-relay.example.tld)"/>
+                        <TextBlock Classes="info" 
+                                   Text="3. Provide your API key from the admin console"/>
+                        <TextBlock Classes="info" 
+                                   Text="4. Your hardware ID is automatically generated"/>
+                    </StackPanel>
+                </Border>
+                
+                <!-- First Time Setup Panel (Visible when no config exists) -->
+                <StackPanel Name="FirstTimeSetupPanel">
+                    <Border Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                            BorderBrush="#910012"
+                            BorderThickness="2"
+                            CornerRadius="6"
+                            Padding="15"
+                            Margin="0,0,0,20">
+                        <StackPanel>
+                            <TextBlock Text="First Time Setup"
+                                       FontWeight="Bold"
+                                       FontSize="15"
+                                       Foreground="#910012"
+                                       Margin="0,0,0,8"/>
+                            <TextBlock Text="You must create a password to secure your credentials. This password will encrypt your API key and backend settings."
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextControlForeground}"
+                                       Opacity="0.8"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Backend URL -->
+                    <TextBlock Classes="label" Text="Backend Server URL"/>
+                    <TextBox Name="BackendUrlTextBox" 
+                             Watermark="http://172.18.0.1:7080"
+                             Text="http://"/>
+                    
+                    <!-- Relay URL -->
+                    <TextBlock Classes="label" Text="Relay Server URL"/>
+                    <TextBox Name="RelayUrlTextBox" 
+                             Watermark="172.18.0.1:7443"
+                             Text=""/>
+                    
+                    <!-- API Key -->
+                    <TextBlock Classes="label" Text="API Key"/>
+                    <TextBox Name="ApiKeyTextBox" 
+                             Watermark="Enter your API key from admin console"
+                             PasswordChar="●"/>
+                    
+                    <!-- Hardware ID -->
+                    <TextBlock Classes="label" Text="Hardware ID (Read-only)"/>
+                    <TextBox Name="HardwareIdTextBox" 
+                             Watermark="Your unique device identifier"
+                             IsReadOnly="True"
+                             Background="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"
+                             Foreground="{DynamicResource TextControlForeground}"
+                             Opacity="0.7"/>
+                    
+                    <Border Height="1" 
+                            Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            Margin="0,10,0,20"/>
+                    
+                    <!-- Password (Required) -->
+                    <TextBlock Classes="label" Text="Create Password (Required)"/>
+                    <TextBox Name="FirstTimePasswordTextBox" 
+                             Watermark="Enter a secure password (min. 6 characters)"
+                             PasswordChar="●"/>
+                    
+                    <!-- Confirm Password -->
+                    <TextBlock Classes="label" Text="Confirm Password"/>
+                    <TextBox Name="FirstTimeConfirmPasswordTextBox" 
+                             Watermark="Confirm your password"
+                             PasswordChar="●"/>
+                </StackPanel>
+                
+                <!-- Password Login Panel (Visible when config exists) -->
+                <StackPanel Name="PasswordLoginPanel" IsVisible="False">
+                    <Border Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                            BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="15"
+                            Margin="0,0,0,20">
+                        <StackPanel>
+                            <TextBlock Text="Welcome Back"
+                                       FontWeight="Bold"
+                                       FontSize="15"
+                                       Foreground="{DynamicResource TextControlForeground}"
+                                       Margin="0,0,0,8"/>
+                            <TextBlock Text="Enter your password to connect."
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextControlForeground}"
+                                       Opacity="0.7"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Password -->
+                    <TextBlock Classes="label" Text="Password"/>
+                    <TextBox Name="PasswordTextBox" 
+                             Watermark="Enter your password"
+                             PasswordChar="●"/>
+                </StackPanel>
+                
+                <!-- Connect Button -->
+                <Button Classes="primary" 
+                        Name="LoginButton"
+                        Content="Login"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Click="LoginButton_Click"/>
+                
+                <!-- Success Message -->
+                <Border Name="StatusBorder"
+                        Classes="success-container"
+                        IsVisible="False">
+                    <StackPanel>
+                        <TextBlock Text="Success"
+                                   FontWeight="Bold" 
+                                   FontSize="14"
+                                   Foreground="#00A344"
+                                   Margin="0,0,0,5"/>
+                        <TextBlock Name="StatusTextBlock" 
+                                   Classes="status"/>
+                    </StackPanel>
+                </Border>
+                
+                <!-- Error Message -->
+                <Border Name="ErrorBorder"
+                        Classes="error-container"
+                        IsVisible="False">
+                    <StackPanel>
+                        <TextBlock Text="Error" 
+                                   FontWeight="Bold" 
+                                   FontSize="14"
+                                   Foreground="#DC3545"
+                                   Margin="0,0,0,5"/>
+                        <TextBlock Name="ErrorTextBlock" 
+                                   Classes="error"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+                <!-- Reset Button -->
+                <Button Name="ResetButton"
+                        Content="Reset"
+                        Click="ResetButton_Click"
+                        Background="Transparent"
+                        Foreground="#DC3545"
+                        BorderBrush="#DC3545"
+                        BorderThickness="1"
+                        Padding="12,8"
+                        Margin="0,10,0,10"
+                        CornerRadius="6"
+                        HorizontalAlignment="Center"
+                        FontSize="12"
+                        ToolTip.Tip="Delete all saved credentials and start fresh"/>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</Window>

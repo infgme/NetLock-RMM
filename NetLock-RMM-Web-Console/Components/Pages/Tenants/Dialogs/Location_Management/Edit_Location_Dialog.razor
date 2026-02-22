@@ -12,6 +12,7 @@
 @inject IDataProtectionProvider DataProtectionProvider
 @inject IStringLocalizer<Pages.Tenants.Dialogs.Location_Management.Edit_Location_Dialog> Localizer
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NetLock_RMM_Web_Console.Classes.Helper.TenantUpdateService TenantUpdateService
 
 <AuthorizeView>
     <NotAuthorized>
@@ -115,8 +116,8 @@
 
                 this.Snackbar.Add(Localizer["saved"], Severity.Success);
 
-                Thread.Sleep(1000);
-                NavigationManager.Refresh();
+                // Notify NavMenu to reload tenant data
+                TenantUpdateService.NotifyTenantUpdated();
             }
             else
                 this.Snackbar.Add(Localizer["error_occurred"], Severity.Error);

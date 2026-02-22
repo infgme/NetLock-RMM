@@ -10,6 +10,7 @@
         public static string update_servers { get; set; } = String.Empty;
         public static string trust_servers { get; set; } = String.Empty;
         public static string file_servers { get; set; } = String.Empty;
+        public static string relay_servers { get; set; } = String.Empty;
         public static string tenant_guid { get; set; } = String.Empty;
         public static string location_guid { get; set; } = String.Empty;
         public static string language { get; set; } = String.Empty;

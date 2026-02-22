@@ -336,9 +336,7 @@
     private async Task Get_Tenants_Overview()
     {
         tenants_mysql_data = new List<Tenants_Entity>();
-
-        string tenant_name = await localStorage.GetItemAsync<string>("tenant_name");
-
+        
         MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
 
         try
@@ -378,7 +376,7 @@
         }
         finally
         {
-            conn.Close();
+            await conn.CloseAsync();
         }
     }
 
@@ -406,7 +404,7 @@
 
         add_tenant_dialog_open = true;
 
-        var result = await DialogService.Show<Tenants.Dialogs.Tenant_Management.Add_Tenant_Dialog>(string.Empty, new DialogParameters(), options).Result;
+        var result = await (await DialogService.ShowAsync<Tenants.Dialogs.Tenant_Management.Add_Tenant_Dialog>(string.Empty, new DialogParameters(), options)).Result;
 
         add_tenant_dialog_open = false;
 
@@ -415,10 +413,9 @@
 
         Logging.Handler.Debug("/manage_jobs -> Add_Job_Dialog", "Result", result.Data.ToString() ?? String.Empty);
 
-        if (String.IsNullOrEmpty(result.Data.ToString()) == false && result.Data.ToString() != "error")
-        {
-            await Get_Tenants_Overview();
-        }
+        // Reload tenant data without page refresh
+        await Permissions();
+        await Get_Tenants_Overview();
     }
 
     #region Export_Data
@@ -440,7 +437,7 @@
 
         show_export_table_dialog_open = true;
 
-        var result = await this.DialogService.Show<Shared.Export_Data_Dialog>(string.Empty, new DialogParameters(), options).Result;
+        var result = await (await DialogService.ShowAsync<Shared.Export_Data_Dialog>(string.Empty, new DialogParameters(), options)).Result;
 
         show_export_table_dialog_open = false;
 

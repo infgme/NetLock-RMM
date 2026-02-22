@@ -67,16 +67,16 @@ namespace NetLock_RMM_Agent_Installer
         public static string program_files_health_agent_service_config_path_osx = $"/Library/LaunchDaemons/{program_files_health_agent_service_name_osx}.plist";
         public static string program_files_health_agent_service_log_path_unix = "/var/log/netlock-rmm-agent-health.log";
         
-        public static string program_files_user_process_dir = Path.Combine(GetBasePath_ProgramFiles(), "0x101 Cyber Security", "NetLock RMM", "User Process");
+        public static string program_files_user_process_dir = Path.Combine(GetBasePath_ProgramFiles(), OperatingSystem.IsWindows() ? "0x101 Cyber Security" : "0x101_Cyber_Security", OperatingSystem.IsWindows() ? "NetLock RMM" : "NetLock_RMM", OperatingSystem.IsWindows() ? "User Process" : "User_Process");
         public static string program_data_user_process_dir = Path.Combine(GetBasePath_CommonApplicationData(), "0x101 Cyber Security", "NetLock RMM", "User Process");
-        public static string program_files_user_process_path = Path.Combine(GetBasePath_ProgramFiles(), "0x101 Cyber Security", "NetLock RMM", "User Process", "NetLock_RMM_User_Process.exe");
+        public static string program_files_user_process_path = Path.Combine(GetBasePath_ProgramFiles(), OperatingSystem.IsWindows() ? "0x101 Cyber Security" : "0x101_Cyber_Security", OperatingSystem.IsWindows() ? "NetLock RMM" : "NetLock_RMM", OperatingSystem.IsWindows() ? "User Process" : "User_Process", OperatingSystem.IsWindows() ? "NetLock_RMM_User_Process.exe" : "NetLock_RMM_User_Process");
 
-        public static string program_files_user_agent_dir = Path.Combine(GetBasePath_ProgramFiles(), "0x101 Cyber Security", "NetLock RMM", "User Agent");
-        public static string program_data_user_agent_dir = Path.Combine(GetBasePath_CommonApplicationData(), "0x101 Cyber Security", "NetLock RMM", "User Agent");
-        public static string program_files_user_agent_path = Path.Combine(GetBasePath_ProgramFiles(), "0x101 Cyber Security", "NetLock RMM", "User Agent", "NetLock_RMM_User_Process.exe");
+        //public static string program_files_user_agent_dir = Path.Combine(GetBasePath_ProgramFiles(), OperatingSystem.IsWindows() ? "0x101 Cyber Security" : "0x101_Cyber_Security", OperatingSystem.IsWindows() ? "NetLock RMM" : "NetLock_RMM", OperatingSystem.IsWindows() ? "User Agent" : "User_Agent");
+        //public static string program_data_user_agent_dir = Path.Combine(GetBasePath_CommonApplicationData(), "0x101 Cyber Security", "NetLock RMM", "User Agent");
+        //public static string program_files_user_agent_path = Path.Combine(GetBasePath_ProgramFiles(), OperatingSystem.IsWindows() ? "0x101 Cyber Security" : "0x101_Cyber_Security", OperatingSystem.IsWindows() ? "NetLock RMM" : "NetLock_RMM", OperatingSystem.IsWindows() ? "User Agent" : "User_Agent", OperatingSystem.IsWindows() ? "NetLock_RMM_User_Process.exe" : "NetLock_RMM_User_Process");
 
-        public static string program_files_tray_icon_dir =  Path.Combine(GetBasePath_ProgramFiles(), "0x101 Cyber Security", "NetLock RMM", "Tray Icon");
-        public static string program_files_tray_icon_path = Path.Combine(GetBasePath_ProgramFiles(), "0x101 Cyber Security", "NetLock RMM", "Tray Icon", "NetLock_RMM_Tray_Icon.exe");
+        public static string program_files_tray_icon_dir =  Path.Combine(GetBasePath_ProgramFiles(), OperatingSystem.IsWindows() ? "0x101 Cyber Security" : "0x101_Cyber_Security", OperatingSystem.IsWindows() ? "NetLock RMM" : "NetLock_RMM", OperatingSystem.IsWindows() ? "Tray Icon" : "Tray_Icon");
+        public static string program_files_tray_icon_path = Path.Combine(GetBasePath_ProgramFiles(), OperatingSystem.IsWindows() ? "0x101 Cyber Security" : "0x101_Cyber_Security", OperatingSystem.IsWindows() ? "NetLock RMM" : "NetLock_RMM", OperatingSystem.IsWindows() ? "Tray Icon" : "Tray_Icon", OperatingSystem.IsWindows() ? "NetLock_RMM_Tray_Icon.exe" : "NetLock_RMM_Tray_Icon");
         
         // Agent Bundle package paths
         public static string agent_package_path = @"agent.package";

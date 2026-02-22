@@ -24,6 +24,7 @@ namespace NetLock_RMM_Server.Events
 
             try
             {
+                Console.WriteLine("Processing " + type + " notifications...");
                 await conn.OpenAsync();
 
                 string query = $"SELECT * FROM `events` WHERE `{type}` = 0 AND `read` = 0;"; // only controlled events, no sql injection possible
@@ -69,6 +70,7 @@ namespace NetLock_RMM_Server.Events
                                 }
                                 else if (type == "webhook_status" && notifications.webhook && reader["webhook_status"].ToString() == "0")
                                 {
+                                    Console.WriteLine("Processing webhook notification for event ID: " + reader["id"].ToString());
                                     await Check_Notification(reader["id"].ToString() ?? String.Empty, reader["device_id"].ToString() ?? String.Empty, reader["type"].ToString() ?? String.Empty, type, "webhook_notifications", reader["severity"].ToString() ?? String.Empty, reader["reported_by"].ToString() ?? String.Empty, reader["_event"].ToString() ?? String.Empty, reader["description"].ToString() ?? String.Empty, reader["tenant_name_snapshot"].ToString() ?? String.Empty, reader["location_name_snapshot"].ToString() ?? String.Empty, reader["device_name"].ToString() ?? String.Empty, reader["date"].ToString() ?? String.Empty);
                                 }
                                 
@@ -78,6 +80,7 @@ namespace NetLock_RMM_Server.Events
                                 // Set all notifications to true if an error occurs
                                 await MySQL.Handler.Execute_Command("UPDATE `events` SET mail_status = 1, ms_teams_status = 1, telegram_status = 1, ntfy_sh_status = 1, webhook_status = 1 WHERE id = " + reader["id"].ToString() + ";");
                                 Logging.Handler.Error("Events.Sender.Smtp", "MySQL_Query", ex.ToString());
+                                Console.WriteLine("Error processing event ID " + reader["id"].ToString() + ": " + ex.ToString());
                             }
                         }
                     }
@@ -86,6 +89,7 @@ namespace NetLock_RMM_Server.Events
             catch (Exception ex)
             {
                 Logging.Handler.Error("Events.Sender.Smtp", "MySQL_Query", ex.ToString());
+                Console.WriteLine("Error processing " + type + " notifications: " + ex.ToString());
             }
             finally
             {
@@ -95,6 +99,7 @@ namespace NetLock_RMM_Server.Events
 
         private static async Task Check_Notification(string id, string device_id, string notification_type, string type, string table, string severity, string reported_by, string _event, string description, string tenant_name = "", string location_name = "", string device_name = "", string date = "")
         {
+            Console.WriteLine("Checking notifications for event ID: " + id + " in table: " + table);
             MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
 
             try
@@ -140,6 +145,8 @@ namespace NetLock_RMM_Server.Events
 
                             if (severity == reader["severity"].ToString() || reader["severity"].ToString() == "4")
                             {
+                                Logging.Handler.Debug("Events.Sender.Check_Notifications", "severity_match", $"Event severity '{severity}' matched notification severity '{reader["severity"]}' for table '{table}'");
+                                
                                 if (table == "mail_notifications")
                                 {
                                     Logging.Handler.Debug("Events.Sender.Check_Notifications", "mail_notifications", "true");
@@ -187,6 +194,10 @@ namespace NetLock_RMM_Server.Events
 
                                     success = await Helper.Notifications.Webhook.Send_Message(reader["id"].ToString() ?? String.Empty, tenant_name, location_name, device_name, date, reported_by, _event, description);
                                 }
+                            }
+                            else
+                            {
+                                Logging.Handler.Debug("Events.Sender.Check_Notifications", "severity_mismatch", $"Event severity '{severity}' did NOT match notification severity '{reader["severity"]}' for table '{table}' - skipping notification");
                             }
 
                             // Update event

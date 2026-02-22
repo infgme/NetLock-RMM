@@ -153,6 +153,7 @@
     [Parameter] public string device_name { get; set; }
     [Parameter] public string tenant_guid { get; set; }
     [Parameter] public string location_guid { get; set; }
+    [Parameter] public string access_key { get; set; }
 
     private string netlock_username = String.Empty;
     private string token = String.Empty;
@@ -205,10 +206,7 @@
 
     public class Remote_Target_Device
     {
-        public string device_id { get; set; }
-        public string device_name { get; set; }
-        public string location_guid { get; set; }
-        public string tenant_guid { get; set; }
+        public string access_key { get; set; }
     }
 
     public class Remote_Command
@@ -444,10 +442,7 @@
             var adminIdentity = new Remote_Admin_Identity { token = token };
             var targetDevice = new Remote_Target_Device
                 {
-                    device_id = device_id,
-                    device_name = device_name,
-                    tenant_guid = tenant_guid,
-                    location_guid = location_guid
+                   access_key = access_key
                 };
 
             var command = new Remote_Command
@@ -516,10 +511,7 @@
             var adminIdentity = new Remote_Admin_Identity { token = token };
             var targetDevice = new Remote_Target_Device
                 {
-                    device_id = device_id,
-                    device_name = device_name,
-                    tenant_guid = tenant_guid,
-                    location_guid = location_guid
+                    access_key = access_key
                 };
 
             var command = new Remote_Command
@@ -570,10 +562,7 @@
             var adminIdentity = new Remote_Admin_Identity { token = token };
             var targetDevice = new Remote_Target_Device
             {
-                device_id = device_id,
-                device_name = device_name,
-                tenant_guid = tenant_guid,
-                location_guid = location_guid
+                access_key = access_key
             };
 
             var command = new Remote_Command
@@ -635,10 +624,7 @@
             var adminIdentity = new Remote_Admin_Identity { token = token };
             var targetDevice = new Remote_Target_Device
             {
-                device_id = device_id,
-                device_name = device_name,
-                tenant_guid = tenant_guid,
-                location_guid = location_guid
+                access_key = access_key
             };
 
             var command = new Remote_Command

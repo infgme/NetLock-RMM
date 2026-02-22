@@ -17,6 +17,8 @@ namespace Helper.Notifications
             public string server { get; set; }
             public string port { get; set; }
             public bool ssl { get; set; }
+            public string fromAddress { get; set; }
+            public string from { get; set; }
         }
 
         public static async Task<bool> Send_Mail(string recipient, string subject, string body)
@@ -46,29 +48,39 @@ namespace Helper.Notifications
             }
             catch (Exception ex)
             {
-                Logging.Handler.Error("class", "Send_Mail", ex.ToString());
+                Logging.Handler.Error("class", "Send_Mail", ex.Message);
             }
             finally
             {
                 await conn.CloseAsync();
             }
+
+            // Validate smtpSettings
+            if (smtpSettings == null)
+            {
+                string error = "SMTP settings could not be loaded from database";
+                Logging.Handler.Error("Classes.Helper.Smtp", "Send_Mail", error);
+                return false;
+            }
             
             try
             {
+                // Prioritize 'fromAddress' field, then 'from' field, finally fallback to username
+                string fromAddress = !string.IsNullOrEmpty(smtpSettings.fromAddress) 
+                    ? smtpSettings.fromAddress 
+                    : (!string.IsNullOrEmpty(smtpSettings.from) 
+                        ? smtpSettings.from 
+                        : smtpSettings.username);
+
                 using (SmtpClient smtpClient = new SmtpClient(smtpSettings.server, Convert.ToInt32(smtpSettings.port)))
                 {
-                    // Setze die Anmeldeinformationen für den SMTP-Server
                     smtpClient.Credentials = new NetworkCredential(smtpSettings.username, smtpSettings.password);
-
-                    // Aktiviere SSL
                     smtpClient.EnableSsl = smtpSettings.ssl;
 
-                    // Erstelle eine Instanz der MailMessage-Klasse
                     using (MailMessage mailMessage = new MailMessage())
                     {
-                        // Setze Absender, Empfänger, Betreff und Nachrichtentext
-                        mailMessage.From = new MailAddress("Alerts | NetLock <" + smtpSettings.username + ">");
-                        mailMessage.To.Add(recipient); // Füge hier die Empfänger-E-Mail-Adresse hinzu
+                        mailMessage.From = new MailAddress(fromAddress, "Alerts | NetLock");
+                        mailMessage.To.Add(recipient);
                         mailMessage.Subject = subject;
                         mailMessage.Body = body;
 

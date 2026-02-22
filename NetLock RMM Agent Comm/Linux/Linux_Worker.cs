@@ -113,6 +113,7 @@ namespace NetLock_RMM_Agent_Comm
                 return;
 
             // init modules here
+            Global.Initialization.Health.User_Processes();
 
             Logging.Debug("Service.Module_Handler", "Stop", "Module_Handler");
         }

@@ -160,8 +160,7 @@ namespace NetLock_RMM_Web_Console.Components.Pages.Devices
 
             Update_Chart_Options();
 
-            if (Configuration.Members_Portal.IsApiEnabled)
-                await Get_Members_Portal_License_Limit();
+            await Get_Members_Portal_License_Limit();
 
             await Remote_Setup_SignalR();
 
@@ -181,7 +180,17 @@ namespace NetLock_RMM_Web_Console.Components.Pages.Devices
         {
             try
             {
-                members_portal_license_limit_reached = await Classes.Members_Portal.Handler.Check_License_Limit_Reached();
+                members_portal_license_limit_reached = await Classes.Members_Portal.Handler.CheckLicenseLimitReached();
+                
+                if (members_portal_license_limit_reached)
+                {
+                    await DialogService.ShowMessageBox(
+                        "License Limit Reached",
+                        "The license limit has been reached. Devices exceeding your license have been unauthorized automatically. Please consider increasing your licenses to add more devices. Contact support for more information.",
+                        yesText: "OK",
+                        options: new DialogOptions() { FullWidth = true, MaxWidth = MaxWidth.Small, BackgroundClass = "dialog-blurring" }
+                    );
+                }
             }
             catch (Exception ex)
             {
@@ -196,6 +205,7 @@ namespace NetLock_RMM_Web_Console.Components.Pages.Devices
         private bool disabled = true;
         private string devices_table_view_port = "70vh";
         private string device_table_search_string = "";
+        private bool show_only_online_devices = false;
         private int events_rows_per_page = 25;
         private static string date = String.Empty;
 
@@ -259,6 +269,17 @@ namespace NetLock_RMM_Web_Console.Components.Pages.Devices
 
         private bool Devices_Table_Filter_Func(MySQL_Entity row)
         {
+            // Apply online-only filter first
+            if (show_only_online_devices)
+            {
+                // Check if device is online: has active remote connection
+                bool isOnline = row.connected;
+                
+                if (!isOnline)
+                    return false;
+            }
+            
+            // Apply search string filter
             if (string.IsNullOrEmpty(device_table_search_string))
                 return true;
 
@@ -298,6 +319,7 @@ namespace NetLock_RMM_Web_Console.Components.Pages.Devices
             notes_device_id = row.device_id;
             notes_tenant_id = row.tenant_id;
             notes_location_id = row.location_id;
+            access_key = row.access_key;
 
             await Get_Device_Information_Details(row.tenant_name, row.location_name, row.device_id);
             await CPU_Information_Load();
@@ -321,6 +343,10 @@ namespace NetLock_RMM_Web_Console.Components.Pages.Devices
             (tenant_guid, location_guid) = await Classes.MySQL.Handler.Get_Tenant_Location_Guid(row.tenant_name, row.location_name);
 
             events_mysql_data = await Events_Load(row.device_id, true);
+
+            // Starte automatisches Background-Loading für Events
+            if (events_has_more_data)
+                Start_Events_Background_Loading(row.device_id);
 
             if (String.IsNullOrEmpty(notes_string))
                 notes_expanded = false;
@@ -519,6 +545,7 @@ namespace NetLock_RMM_Web_Console.Components.Pages.Devices
         public void Dispose()
         {
             StopAutoRefreshTimer();
+            _eventsBackgroundLoadTimer?.Dispose();
         }
 
         #endregion
@@ -3375,7 +3402,7 @@ WHERE device_id = @deviceId");
             try
             {
                 // Get list of remote connected devices from the server backend
-                string tempConnectedDevicesAccessKeys = await NetLock_RMM_Web_Console.Classes.Helper.Http.Get_Request_With_Api_Key(Configuration.Web_Console.publicOverrideUrl + "/admin/devices/connected", false);
+                string tempConnectedDevicesAccessKeys = await NetLock_RMM_Web_Console.Classes.Helper.Http.Get_Request_With_Api_Key(Configuration.Remote_Server.Connection_String + "/admin/devices/connected", false);
                 
                 await conn.OpenAsync();
 
@@ -4407,6 +4434,7 @@ WHERE device_id = @deviceId");
         public string notes_device_id = String.Empty;
         public string notes_location_id = String.Empty;
         public string notes_tenant_id = String.Empty;
+        public string access_key = String.Empty;
         private bool notes_expanded = false;
         private async Task Notes_Edit_Form()
         {
@@ -4707,6 +4735,14 @@ WHERE device_id = @deviceId");
 
         public List<Events_Table> events_mysql_data; //Datasource for table
 
+        // Progressive loading variables
+        private int events_batch_size = 100;
+        private int events_current_offset = 0;
+        private bool events_has_more_data = true;
+        private bool events_is_loading_more = false;
+        private System.Threading.Timer _eventsBackgroundLoadTimer;
+        private bool _isBackgroundLoading = false;
+
         public class Events_Table
         {
             public string id { get; set; } = String.Empty;
@@ -4776,19 +4812,47 @@ WHERE device_id = @deviceId");
 
         private async Task<List<Events_Table>> Events_Load(string device_id, bool bypass_events_load_counter)
         {
-            if (events_load_counter != 0 && bypass_events_load_counter == false)
+            // Stoppe aktuelles Background-Loading
+            Stop_Events_Background_Loading();
+            
+            // Reset offset and clear data for new search
+            events_current_offset = 0;
+            events_has_more_data = true;
+            events_is_loading_more = true; // Setze auf true beim Start
+            StateHasChanged();
+            
+            var result = await Events_Load_Batch(device_id, bypass_events_load_counter, true);
+            
+            // Starte neues Background-Loading
+            if (events_has_more_data)
+                Start_Events_Background_Loading(device_id);
+            else
+            {
+                // Kein weiteres Laden nötig, deaktiviere Ladebalken
+                events_is_loading_more = false;
+                StateHasChanged();
+            }
+            
+            return result;
+        }
+
+        private async Task<List<Events_Table>> Events_Load_Batch(string device_id, bool bypass_events_load_counter, bool reset_list = false)
+        {
+            if (events_load_counter != 0 && bypass_events_load_counter == false && !reset_list)
             {
                 events_load_counter++;
-                return new List<Events_Table>();
+                return events_mysql_data ?? new List<Events_Table>();
             }
 
-            loading_overlay = true;
+            // Nur loading_overlay anzeigen beim ersten Laden
+            if (!bypass_events_load_counter && reset_list)
+            {
+                loading_overlay = true;
+            }
+
 
             string severity_condition = String.Empty;
             string type_condition = String.Empty;
-            string read_condition = String.Empty;
-            string tenant_condition = String.Empty;
-            string location_condition = String.Empty;
 
             // Mapping severity string to integer
             if (device_information_events_severity_string == Localizer["low"])
@@ -4808,7 +4872,7 @@ WHERE device_id = @deviceId");
             else if (events_type_string == Localizer["sensor"])
                 type_condition = "AND type = 2";
 
-            // Construct the query
+            // Construct the query with LIMIT and OFFSET
             string query = $@"
             SELECT *
             FROM events
@@ -4817,13 +4881,15 @@ WHERE device_id = @deviceId");
             AND date <= @end_date
             {severity_condition}
             {type_condition}
-            ORDER BY date DESC;
+            ORDER BY date DESC
+            LIMIT @limit OFFSET @offset;
         ";
 
             using MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
             try
             {
-                List<Events_Table> result = new List<Events_Table>();
+                List<Events_Table> result = reset_list ? new List<Events_Table>() : (events_mysql_data ?? new List<Events_Table>());
+                int loaded_count = 0;
 
                 await conn.OpenAsync();
 
@@ -4831,9 +4897,10 @@ WHERE device_id = @deviceId");
                 command.Parameters.AddWithValue("@device_id", device_id);
                 command.Parameters.AddWithValue("@start_date", device_information_events_table_dateRange.Start.Value);
                 command.Parameters.AddWithValue("@end_date", device_information_events_table_dateRange.End.Value);
+                command.Parameters.AddWithValue("@limit", events_batch_size);
+                command.Parameters.AddWithValue("@offset", events_current_offset);
 
-
-                Logging.Handler.Debug("Events", "MySQL_Prepared_Query", query); //Output prepared query
+                Logging.Handler.Debug("Events", "MySQL_Prepared_Query", query);
 
                 using (DbDataReader reader = await command.ExecuteReaderAsync())
                 {
@@ -4841,9 +4908,7 @@ WHERE device_id = @deviceId");
                     {
                         while (await reader.ReadAsync())
                         {
-                            //Logging.Handler.Debug("Events", "MySQL_Result", reader["id"].ToString()); //Output the JSON
-
-                            Events_Table entity = new Events_Table //Create the entity
+                            Events_Table entity = new Events_Table
                             {
                                 id = reader["id"].ToString() ?? String.Empty,
                                 date = reader["date"].ToString() ?? String.Empty,
@@ -4855,23 +4920,102 @@ WHERE device_id = @deviceId");
                                 type = reader["type"].ToString() ?? String.Empty,
                             };
 
-                            result.Add(entity); // Add the entity to the list
+                            result.Add(entity);
+                            loaded_count++;
                         }
                     }
                 }
 
-                return result; //Return the list
+                // Check if there's more data to load
+                if (loaded_count < events_batch_size)
+                    events_has_more_data = false;
+                else
+                    events_current_offset += events_batch_size;
+
+                return result;
             }
             catch (Exception ex)
             {
                 Logging.Handler.Error("Events", "MySQL_Query", ex.ToString());
-                return new List<Events_Table>(); // Return an empty list or handle the exception as needed
+                return events_mysql_data ?? new List<Events_Table>();
             }
             finally
             {
                 conn.Close();
-                loading_overlay = false;
+                
+                // Nur loading_overlay deaktivieren beim ersten Laden
+                if (!bypass_events_load_counter && reset_list)
+                {
+                    loading_overlay = false;
+                }
             }
+        }
+
+        private void Start_Events_Background_Loading(string device_id)
+        {
+            if (!events_has_more_data || _isBackgroundLoading)
+                return;
+
+            // Timer startet nach 2 Sekunden und lädt dann alle 3 Sekunden weitere Batches
+            _eventsBackgroundLoadTimer = new System.Threading.Timer(async _ => 
+            {
+                if (!events_has_more_data)
+                {
+                    _eventsBackgroundLoadTimer?.Dispose();
+                    
+                    // Wenn keine weiteren Daten mehr zu laden sind, deaktiviere Ladebalken
+                    await InvokeAsync(() =>
+                    {
+                        events_is_loading_more = false;
+                        _isBackgroundLoading = false;
+                        StateHasChanged();
+                        Logging.Handler.Debug("/devices -> Events Background Loading", "Status", "All events loaded");
+                    });
+                    return;
+                }
+
+                if (_isBackgroundLoading)
+                    return;
+
+                _isBackgroundLoading = true;
+
+                await InvokeAsync(async () =>
+                {
+                    try
+                    {
+                        var updatedEvents = await Events_Load_Batch(device_id, true, false);
+                        events_mysql_data = updatedEvents;
+                        StateHasChanged();
+
+                        // Wenn alle Daten geladen sind, Timer stoppen und Ladebalken ausblenden
+                        if (!events_has_more_data)
+                        {
+                            _eventsBackgroundLoadTimer?.Dispose();
+                            events_is_loading_more = false;
+                            StateHasChanged();
+                            Logging.Handler.Debug("/devices -> Events Background Loading", "Status", "All events loaded");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logging.Handler.Error("/devices -> Events Background Loading", "Error", ex.ToString());
+                        _eventsBackgroundLoadTimer?.Dispose();
+                        events_is_loading_more = false;
+                        StateHasChanged();
+                    }
+                    finally
+                    {
+                        _isBackgroundLoading = false;
+                    }
+                });
+            }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(3));
+        }
+
+        private void Stop_Events_Background_Loading()
+        {
+            _eventsBackgroundLoadTimer?.Dispose();
+            _isBackgroundLoading = false;
+            events_is_loading_more = false;
         }
 
         private bool event_details_dialog_open = false;
@@ -5098,10 +5242,7 @@ WHERE device_id = @deviceId");
 
         public class Remote_Target_Device
         {
-            public string device_id { get; set; }
-            public string device_name { get; set; }
-            public string location_guid { get; set; }
-            public string tenant_guid { get; set; }
+            public string access_key { get; set; }
         }
 
         public class Remote_Command
@@ -5260,6 +5401,7 @@ WHERE device_id = @deviceId");
             parameters.Add("device_name", notes_device_name);
             parameters.Add("tenant_guid", tenant_guid);
             parameters.Add("location_guid", location_guid);
+            parameters.Add("access_key", access_key);
 
             remote_shell_dialog_open = true;
 
@@ -5297,6 +5439,7 @@ WHERE device_id = @deviceId");
             parameters.Add("device_name", notes_device_name);
             parameters.Add("tenant_guid", tenant_guid);
             parameters.Add("location_guid", location_guid);
+            parameters.Add("access_key", access_key);
 
             remote_eventlog_dialog_open = true;
 
@@ -5498,6 +5641,7 @@ WHERE device_id = @deviceId");
             parameters.Add("tenant_guid", tenant_guid);
             parameters.Add("location_guid", location_guid);
             parameters.Add("platform", platform);
+            parameters.Add("access_key", access_key);
 
             remote_file_browser_dialog_open = true;
 
@@ -5540,10 +5684,7 @@ WHERE device_id = @deviceId");
 
                 var targetDevice = new Remote_Target_Device
                 {
-                    device_id = notes_device_id,
-                    device_name = notes_device_name,
-                    tenant_guid = tenant_guid,
-                    location_guid = location_guid
+                    access_key = access_key
                 };
 
                 var command = new Remote_Command
@@ -5644,7 +5785,7 @@ WHERE device_id = @deviceId");
             {
                 // Get list of connected device access keys
                 string connectedDevicesAccessKeys = await NetLock_RMM_Web_Console.Classes.Helper.Http.Get_Request_With_Api_Key(
-                    Configuration.Web_Console.publicOverrideUrl + "/admin/devices/connected", false);
+                    Configuration.Remote_Server.Connection_String + "/admin/devices/connected", false);
                 
                 if (string.IsNullOrEmpty(connectedDevicesAccessKeys))
                 {
@@ -5714,10 +5855,7 @@ WHERE device_id = @deviceId");
 
                 var targetDevice = new Remote_Target_Device
                 {
-                    device_id = notes_device_id,
-                    device_name = notes_device_name,
-                    tenant_guid = tenant_guid,
-                    location_guid = location_guid
+                    access_key = access_key
                 };
 
                 var command = new Remote_Command
@@ -5776,10 +5914,7 @@ WHERE device_id = @deviceId");
 
                 var targetDevice = new Remote_Target_Device
                 {
-                    device_id = notes_device_id,
-                    device_name = notes_device_name,
-                    tenant_guid = tenant_guid,
-                    location_guid = location_guid
+                    access_key = access_key
                 };
 
                 var command = new Remote_Command
@@ -5827,10 +5962,7 @@ WHERE device_id = @deviceId");
 
                 var targetDevice = new Remote_Target_Device
                 {
-                    device_id = notes_device_id,
-                    device_name = notes_device_name,
-                    tenant_guid = tenant_guid,
-                    location_guid = location_guid
+                    access_key = access_key
                 };
 
                 var command = new Remote_Command
@@ -5879,14 +6011,16 @@ WHERE device_id = @deviceId");
                 BackgroundClass = "dialog-blurring",
                 BackdropClick = false,
                 CloseOnEscapeKey = false,
-                FullScreen = false,
+                FullScreen = true,
             };
 
             DialogParameters parameters = new DialogParameters();
+            parameters.Add("platform", platform);
             parameters.Add("device_id", notes_device_id);
             parameters.Add("device_name", notes_device_name);
             parameters.Add("tenant_guid", tenant_guid);
             parameters.Add("location_guid", location_guid);
+            parameters.Add("access_key", access_key);
 
             remote_control_dialog_open = true;
 
@@ -5894,7 +6028,7 @@ WHERE device_id = @deviceId");
 
             remote_control_dialog_open = false;
         }
-
+        
         #endregion
         
         #region Move Devices
@@ -6076,6 +6210,7 @@ WHERE device_id = @deviceId");
             parameters.Add("device_ids", selectedDeviceIds.ToList());
             parameters.Add("tenant_guid", tenant_guid);
             parameters.Add("location_guid", location_guid);
+            parameters.Add("access_key", access_key);
 
             bulk_remote_shell_dialog_open = true;
 

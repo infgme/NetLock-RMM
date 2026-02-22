@@ -28,4 +28,40 @@
     <PackageReference Include="System.Management" Version="9.0.0" />
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="9.0.1" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- DevCon.exe - Device Console Tool -->
+    <None Include="DisplayDriver\devcon.exe">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>DisplayDriver\devcon.exe</Link>
+    </None>
+    
+    <!-- Virtual Display Driver Files - x64 Architecture -->
+    <None Include="DisplayDriver\x64\mttvdd.cat">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>DisplayDriver\x64\mttvdd.cat</Link>
+    </None>
+    <None Include="DisplayDriver\x64\MttVDD.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>DisplayDriver\x64\MttVDD.dll</Link>
+    </None>
+    <None Include="DisplayDriver\x64\MttVDD.inf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>DisplayDriver\x64\MttVDD.inf</Link>
+    </None>
+    
+    <!-- Virtual Display Driver Files - ARM64 Architecture -->
+    <None Include="DisplayDriver\arm64\mttvdd.cat">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>DisplayDriver\arm64\mttvdd.cat</Link>
+    </None>
+    <None Include="DisplayDriver\arm64\MttVDD.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>DisplayDriver\arm64\MttVDD.dll</Link>
+    </None>
+    <None Include="DisplayDriver\arm64\MttVDD.inf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>DisplayDriver\arm64\MttVDD.inf</Link>
+    </None>
+  </ItemGroup>
 </Project>

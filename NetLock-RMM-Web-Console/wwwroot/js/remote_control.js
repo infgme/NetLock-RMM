@@ -1,5 +1,4 @@
-﻿// Security-Enhanced Remote Control Script
-(function() {
+﻿(function() {
     'use strict';
 
     // Constants for security limits
@@ -460,6 +459,49 @@
                 console.error('Error in beforeunload handler:', e);
             }
         });
+    };
+
+    window.downloadScreenshot = function(imageElement, fileName) {
+        try {
+            if (!imageElement || !(imageElement instanceof HTMLImageElement)) {
+                console.error('Invalid image element provided');
+                return;
+            }
+
+            // Validate filename to prevent path traversal
+            if (!fileName || typeof fileName !== 'string' || !/^[a-zA-Z0-9_\-\.]+$/.test(fileName)) {
+                fileName = 'screenshot_' + new Date().toISOString().replace(/[:.]/g, '-') + '.png';
+            }
+
+            // Create a canvas to convert the image
+            const canvas = document.createElement('canvas');
+            canvas.width = imageElement.naturalWidth || imageElement.width;
+            canvas.height = imageElement.naturalHeight || imageElement.height;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(imageElement, 0, 0);
+
+            // Convert to blob and download
+            canvas.toBlob(function(blob) {
+                if (!blob) {
+                    console.error('Failed to create blob from canvas');
+                    return;
+                }
+
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = fileName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                // Clean up
+                setTimeout(() => URL.revokeObjectURL(url), 100);
+            }, 'image/png');
+        } catch (e) {
+            console.error('Error downloading screenshot:', e);
+        }
     };
 
 })();

@@ -325,5 +325,45 @@ namespace NetLock_RMM_Server.MySQL
                 await conn.CloseAsync();
             }
         }
+
+        // Get device_id by access_key
+        public static async Task<string> Get_Device_Id_By_Access_Key(string access_key)
+        {
+            string query = "SELECT id FROM devices WHERE access_key = @access_key;";
+
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            
+            try
+            {
+                await conn.OpenAsync();
+
+                MySqlCommand cmd = new MySqlCommand(query, conn);
+                cmd.Parameters.AddWithValue("@access_key", access_key);
+                
+                string device_id = cmd.ExecuteScalar()?.ToString() ?? String.Empty;
+                
+                Logging.Handler.Debug("Classes.MySQL.Handler.Get_Device_Id_By_Access_Key", "Query", query);
+                
+                return device_id;
+            }
+            catch (Exception ex)
+            {
+                Logging.Handler.Error("Classes.MySQL.Handler.Get_Device_Id_By_Access_Key", "Query: " + query, ex.ToString());
+                return String.Empty;
+            }
+            finally
+            {
+                await conn.CloseAsync();
+            }
+        }
+        
+        // Get api_key from settings table
+        public static async Task<string> Get_Api_Key(bool membersPortal)
+        {
+            if (membersPortal)
+                return await Quick_Reader("SELECT members_portal_api_key FROM settings;", "members_portal_api_key");
+            else
+                return await Quick_Reader("SELECT * FROM settings;", "files_api_key");
+        }
     }
 }

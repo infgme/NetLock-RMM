@@ -168,6 +168,8 @@ namespace NetLock_RMM_Agent_Comm
 
             if (!Device_Worker.authorized)
                 return;
+
+            Global.Initialization.Health.User_Processes();
             
             // Antivirus
             Windows.Microsoft_Defender_Antivirus.Handler.Initalization();

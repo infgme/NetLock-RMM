@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 
 namespace NetLock_RMM_User_Process.Windows.ScreenControl
 {
-    internal class ScreenCapture
+    internal class OldScreenCapture
     {
         // Native API to query the number of screens and their properties
         [DllImport("User32.dll")]
@@ -90,6 +90,10 @@ namespace NetLock_RMM_User_Process.Windows.ScreenControl
 
             try
             {
+                // Ensure we're on the input desktop before capturing
+                // This is critical for capturing login screen, UAC prompts, etc.
+                Helper.SessionManager.TrySwitchToInputDesktop();
+                
                 // Get monitor rectangle with caching
                 Rect monitorRect = GetMonitorRect(screenIndex);
 
@@ -304,7 +308,7 @@ namespace NetLock_RMM_User_Process.Windows.ScreenControl
             int currentScreenIndex = 0;
             bool monitorFound = false;
 
-            MonitorEnumDelegate callback = (nint hMonitor, nint hdcMonitor, ref Rect lprcMonitor, nint dwData) =>
+            MonitorEnumDelegate callback = (nint _, nint _, ref Rect lprcMonitor, nint _) =>
             {
                 if (currentScreenIndex == screenIndex)
                 {
@@ -544,13 +548,13 @@ namespace NetLock_RMM_User_Process.Windows.ScreenControl
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         private static extern bool GetMonitorInfo(nint hMonitor, ref MonitorInfo lpmi);
 
-        // Updated to match the MouseControl.cs implementation
-        [StructLayout(LayoutKind.Sequential)]
+        // Structure for monitor information
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
         private struct MonitorInfo
         {
-            public uint cbSize;  // Changed from int to uint to match MouseControl.cs
-            public Rect rcMonitor; // Changed from rcMonitor to Monitor to match MouseControl.cs
-            public Rect rcWork;    // Changed from rcWork to Work to match MouseControl.cs
+            public uint cbSize;
+            public Rect rcMonitor;
+            public Rect rcWork;
             public uint dwFlags;
         }
 
@@ -558,11 +562,10 @@ namespace NetLock_RMM_User_Process.Windows.ScreenControl
         public static int Get_Screen_Indexes()
         {
             int screenCount = 0;
-            var screens = new List<Rect>();
 
             try
             {
-                MonitorEnumDelegate callback = (nint hMonitor, nint hdcMonitor, ref Rect lprcMonitor, nint dwData) =>
+                MonitorEnumDelegate callback = (nint hMonitor, nint _, ref Rect lprcMonitor, nint _) =>
                 {
                     // Retrieve the monitor information
                     MonitorInfo mi = new MonitorInfo();
@@ -570,7 +573,6 @@ namespace NetLock_RMM_User_Process.Windows.ScreenControl
                     
                     if (GetMonitorInfo(hMonitor, ref mi))
                     {
-                        screens.Add(lprcMonitor);
                         Console.WriteLine($"Screen {screenCount}: {lprcMonitor.Left}, {lprcMonitor.Top}, {lprcMonitor.Right}, {lprcMonitor.Bottom}");
                         screenCount++;
 

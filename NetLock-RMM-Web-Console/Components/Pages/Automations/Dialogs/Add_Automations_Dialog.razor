@@ -131,6 +131,8 @@
         await Get_Locations();
         await Get_Groups();
 		await Get_Devices();
+
+		StateHasChanged();
     }
 
     private string updatedJson = String.Empty;
@@ -176,8 +178,15 @@
 
             while (await reader.ReadAsync())
             {
-                policies_list.Add(reader["name"].ToString());
+                string policyName = reader["name"].ToString();
+                if (!string.IsNullOrEmpty(policyName))
+                {
+                    policies_list.Add(policyName);
+                }
             }
+            
+            // Remove duplicates and sort alphabetically
+            policies_list = policies_list.Distinct().OrderBy(p => p).ToList();
         }
         catch (Exception ex)
         {
@@ -205,8 +214,15 @@
 		
             while (await reader.ReadAsync())
 			{
-				tenants_list.Add(reader["name"].ToString());
+				string tenantName = reader["name"].ToString();
+				if (!string.IsNullOrEmpty(tenantName) && !tenants_list.Contains(tenantName))
+				{
+					tenants_list.Add(tenantName);
+				}
 			}
+			
+			// Remove duplicates and sort alphabetically
+			tenants_list = tenants_list.Distinct().OrderBy(t => t).ToList();
 		}
 		catch (Exception ex)
 		{
@@ -234,8 +250,16 @@
 
 			while (await reader.ReadAsync())
 			{
-				locations_list.Add(reader["name"].ToString());
+				string locationName = reader["name"].ToString();
+				
+				if (!locations_list.Contains(locationName) && !string.IsNullOrEmpty(locationName))
+				{
+					locations_list.Add(locationName);
+				}
 			}
+			
+			// Remove duplicates and sort alphabetically
+			locations_list = locations_list.Distinct().OrderBy(l => l).ToList();
 		}
 		catch (Exception ex)
 		{
@@ -263,8 +287,15 @@
 
 			while (await reader.ReadAsync())
 			{
-				groups_list.Add(reader["name"].ToString());
+				string groupName = reader["name"].ToString();
+				if (!string.IsNullOrEmpty(groupName) && !groups_list.Contains(groupName))
+				{
+					groups_list.Add(groupName);
+				}
 			}
+			
+			// Remove duplicates and sort alphabetically
+			groups_list = groups_list.Distinct().OrderBy(g => g).ToList();
 		}
 		catch (Exception ex)
 		{
@@ -293,8 +324,15 @@
 
 			while (await reader.ReadAsync())
 			{
-                devices_list.Add(reader["device_name"].ToString());
+                string deviceName = reader["device_name"].ToString();
+				if (!string.IsNullOrEmpty(deviceName) && !devices_list.Contains(deviceName))
+				{
+					devices_list.Add(deviceName);
+				}
 			}
+			
+			// Remove duplicates and sort alphabetically
+			devices_list = devices_list.Distinct().OrderBy(d => d).ToList();
 		}
 		catch (Exception ex)
 		{

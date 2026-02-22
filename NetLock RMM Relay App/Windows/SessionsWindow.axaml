@@ -1,0 +1,793 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:windows="clr-namespace:NetLock_RMM_Relay_App.Windows"
+        mc:Ignorable="d" d:DesignWidth="950" d:DesignHeight="850"
+        x:Class="NetLock_RMM_Relay_App.Windows.SessionsWindow"
+        Title="NetLock RMM Relay App"
+        Width="950" Height="750"
+        MinWidth="800" MinHeight="600"
+        WindowStartupLocation="CenterScreen"
+        Icon="/Assets/logo.png"
+        ExtendClientAreaToDecorationsHint="False"
+        ExtendClientAreaChromeHints="NoChrome"
+        ExtendClientAreaTitleBarHeightHint="40">
+    
+    <Window.Styles>
+        <!-- Window Background -->
+        <Style Selector="Window">
+            <Setter Property="Background" Value="{DynamicResource SystemChromeLowColor}"/>
+        </Style>
+        
+        <Style Selector="Window /template/ Panel#PART_TransparencyFallback">
+            <Setter Property="Background" Value="{DynamicResource SystemChromeLowColor}"/>
+        </Style>
+        
+        <!-- Title Styles -->
+        <Style Selector="TextBlock.title">
+            <Setter Property="FontSize" Value="24"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}"/>
+            <Setter Property="Margin" Value="0,0,0,20"/>
+        </Style>
+        
+        <Style Selector="TextBlock.subtitle">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}"/>
+            <Setter Property="Opacity" Value="0.7"/>
+            <Setter Property="Margin" Value="0,0,0,15"/>
+        </Style>
+        
+        <!-- Theme Switcher -->
+        <Style Selector="Button.theme-switch">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Margin" Value="5,0"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="BorderBrush" Value="#E0E0E0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        
+        <Style Selector="Button.theme-switch:pointerover">
+            <Setter Property="Background" Value="#F5F5F5"/>
+            <Setter Property="BorderBrush" Value="#910012"/>
+        </Style>
+        
+        <!-- Search TextBox -->
+        <Style Selector="TextBox.search">
+            <Setter Property="CornerRadius" Value="6"/>
+        </Style>
+        
+        <Style Selector="TextBox.search:focus /template/ Border#PART_BorderElement">
+            <Setter Property="BorderBrush" Value="#910012"/>
+            <Setter Property="BorderThickness" Value="2"/>
+        </Style>
+        
+        <!-- CheckBox - NetLock Red -->
+        <Style Selector="CheckBox:checked /template/ Border#NormalRectangle">
+            <Setter Property="Background" Value="#910012"/>
+            <Setter Property="BorderBrush" Value="#910012"/>
+        </Style>
+        
+        <Style Selector="CheckBox:checked:pointerover /template/ Border#NormalRectangle">
+            <Setter Property="Background" Value="#7A000F"/>
+            <Setter Property="BorderBrush" Value="#7A000F"/>
+        </Style>
+        
+        <Style Selector="CheckBox:checked /template/ Path#CheckGlyph">
+            <Setter Property="Stroke" Value="#FFFFFF"/>
+        </Style>
+        
+        <Style Selector="CheckBox:pointerover /template/ Border#NormalRectangle">
+            <Setter Property="BorderBrush" Value="#910012"/>
+        </Style>
+        
+        <!-- Primary Button (Connect) - NetLock Red -->
+        <Style Selector="Button.action">
+            <Setter Property="Background" Value="#910012"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="Padding" Value="20,10"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="5,0"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        
+        <Style Selector="Button.action:pointerover">
+            <Setter Property="Background" Value="#7A000F"/>
+        </Style>
+        
+        <Style Selector="Button.action:disabled">
+            <Setter Property="Background" Value="rgba(145,0,18,0.3)"/>
+            <Setter Property="Foreground" Value="rgba(255,255,255,0.5)"/>
+            <Setter Property="Cursor" Value="Arrow"/>
+        </Style>
+        
+        <!-- Copy Button - Success Green -->
+        <Style Selector="Button.copy">
+            <Setter Property="Background" Value="#00A344"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Margin" Value="5,0"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        
+        <Style Selector="Button.copy:pointerover">
+            <Setter Property="Background" Value="#008C39"/>
+        </Style>
+        
+        <Style Selector="Button.copy:disabled">
+            <Setter Property="Background" Value="rgba(0,163,68,0.3)"/>
+            <Setter Property="Foreground" Value="rgba(255,255,255,0.5)"/>
+            <Setter Property="Cursor" Value="Arrow"/>
+        </Style>
+        
+        <!-- Secondary Button (Refresh) - Gray -->
+        <Style Selector="Button.secondary">
+            <Setter Property="Background" Value="#424242"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="Padding" Value="20,10"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="5,0"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="BorderBrush" Value="#616161"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        
+        <Style Selector="Button.secondary:pointerover">
+            <Setter Property="Background" Value="#616161"/>
+        </Style>
+        
+        <!-- Disconnect Button - Warning Orange -->
+        <Style Selector="Button.disconnect">
+            <Setter Property="Background" Value="#D68100"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="Padding" Value="20,10"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="5,0"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        
+        <Style Selector="Button.disconnect:pointerover">
+            <Setter Property="Background" Value="#B86F00"/>
+        </Style>
+        
+        <!-- ListBox Styles -->
+        <Style Selector="ListBox">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        
+        <Style Selector="ListBoxItem">
+            <Setter Property="Padding" Value="20"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+        
+        <Style Selector="ListBoxItem:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
+        </Style>
+        
+        <Style Selector="ListBoxItem:selected">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
+            <Setter Property="BorderBrush" Value="#6366F1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+        
+        <!-- Disabled ListBoxItem (not enabled) -->
+        <Style Selector="ListBoxItem:disabled">
+            <Setter Property="Opacity" Value="0.6"/>
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
+        </Style>
+        
+        <Style Selector="ListBoxItem:disabled:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+            <Setter Property="Cursor" Value="Arrow"/>
+        </Style>
+        
+        <!-- Session Text Styles -->
+        <Style Selector="TextBlock.session-name">
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+        
+        <Style Selector="TextBlock.session-detail">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}"/>
+            <Setter Property="Opacity" Value="0.7"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+        
+        <Style Selector="TextBlock.session-detail-label">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}"/>
+            <Setter Property="Opacity" Value="0.5"/>
+        </Style>
+        
+        <Style Selector="TextBlock.session-organization">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Opacity" Value="0.7"/>
+        </Style>
+        
+        <!-- Status Styles -->
+        <Style Selector="Border.status-chip">
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+        
+        <Style Selector="Border.status-active">
+            <Setter Property="Background" Value="rgba(0,163,68,0.15)"/>
+            <Setter Property="BorderBrush" Value="#00A344"/>
+        </Style>
+        
+        <Style Selector="Border.status-waiting">
+            <Setter Property="Background" Value="rgba(214,129,0,0.15)"/>
+            <Setter Property="BorderBrush" Value="#D68100"/>
+        </Style>
+        
+        <Style Selector="Border.status-disabled">
+            <Setter Property="Background" Value="rgba(255,63,95,0.15)"/>
+            <Setter Property="BorderBrush" Value="#FF3F5F"/>
+        </Style>
+        
+        <Style Selector="Border.status-disconnecting">
+            <Setter Property="Background" Value="rgba(117,117,117,0.15)"/>
+            <Setter Property="BorderBrush" Value="#757575"/>
+        </Style>
+        
+        <Style Selector="TextBlock.status-text">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+        </Style>
+        
+        <Style Selector="TextBlock.status-connected">
+            <Setter Property="Foreground" Value="#00A344"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        
+        <Style Selector="TextBlock.status-connecting">
+            <Setter Property="Foreground" Value="#D68100"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        
+        <Style Selector="TextBlock.status-disconnected">
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}"/>
+            <Setter Property="Opacity" Value="0.5"/>
+        </Style>
+        
+        <!-- Error Message -->
+        <Style Selector="Border.error-container">
+            <Setter Property="Background" Value="rgba(255,63,95,0.1)"/>
+            <Setter Property="BorderBrush" Value="#FF3F5F"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="15"/>
+            <Setter Property="Margin" Value="0,0,0,15"/>
+        </Style>
+        
+        <Style Selector="TextBlock.error">
+            <Setter Property="Foreground" Value="#FF3F5F"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+        
+        <!-- Empty State -->
+        <Style Selector="TextBlock.empty">
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}"/>
+            <Setter Property="Opacity" Value="0.38"/>
+            <Setter Property="FontSize" Value="15"/>
+        </Style>
+        
+        <!-- Status Bar -->
+        <Style Selector="TextBlock.status-bar">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}"/>
+            <Setter Property="Opacity" Value="0.5"/>
+        </Style>
+        
+        <Style Selector="Border.status-bar-container">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
+        </Style>
+        
+        <!-- URL Info Styles -->
+        <Style Selector="Border.url-info">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,8"/>
+        </Style>
+        
+        <Style Selector="TextBlock.url-label">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}"/>
+            <Setter Property="Opacity" Value="0.6"/>
+        </Style>
+        
+        <Style Selector="TextBlock.url-value">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}"/>
+            <Setter Property="FontFamily" Value="Consolas, Courier New, monospace"/>
+        </Style>
+    </Window.Styles>
+    
+    <Grid Margin="30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,25">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <!-- Title Section -->
+                <StackPanel Grid.Column="0">
+                    <TextBlock Classes="title" Text="🔗 Sessions"/>
+                    
+                    <!-- URL Information - Modern Card Style -->
+                    <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,10,0,0">
+                        <!-- Backend URL Card -->
+                        <Border Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                                BorderBrush="#E0E0E0" 
+                                BorderThickness="1" 
+                                CornerRadius="8" 
+                                Padding="18,12"
+                                MinWidth="200">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="🌐 Backend API" 
+                                          FontSize="11" 
+                                          FontWeight="SemiBold"
+                                          Opacity="0.6"
+                                          Foreground="{DynamicResource TextControlForeground}"/>
+                                <TextBlock Name="BackendUrlText" 
+                                          FontSize="13" 
+                                          FontFamily="Consolas, Courier New, monospace"
+                                          Foreground="{DynamicResource TextControlForeground}"
+                                          FontWeight="Medium"
+                                          TextWrapping="NoWrap"/>
+                            </StackPanel>
+                        </Border>
+                        
+                        <!-- Relay URL Card -->
+                        <Border Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                                BorderBrush="#E0E0E0" 
+                                BorderThickness="1" 
+                                CornerRadius="8" 
+                                Padding="18,12"
+                                MinWidth="200">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="🔄 Relay Server" 
+                                          FontSize="11" 
+                                          FontWeight="SemiBold"
+                                          Opacity="0.6"
+                                          Foreground="{DynamicResource TextControlForeground}"/>
+                                <TextBlock Name="RelayUrlText" 
+                                          FontSize="13" 
+                                          FontFamily="Consolas, Courier New, monospace"
+                                          Foreground="{DynamicResource TextControlForeground}"
+                                          FontWeight="Medium"
+                                          TextWrapping="NoWrap"/>
+                            </StackPanel>
+                        </Border>
+                        
+                        <!-- TLS Setting Card -->
+                        <Border Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                                BorderBrush="#E0E0E0" 
+                                BorderThickness="1" 
+                                CornerRadius="8" 
+                                Padding="18,12"
+                                MinWidth="220">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="🔒 Security" 
+                                          FontSize="11" 
+                                          FontWeight="SemiBold"
+                                          Opacity="0.6"
+                                          Foreground="{DynamicResource TextControlForeground}"/>
+                                <CheckBox Name="RelayTlsCheckBox"
+                                         Content="Enable Relay TLS"
+                                         FontSize="12"
+                                         FontWeight="Medium"
+                                         ToolTip.Tip="Uses TLS encryption for the initial handshake. Requires SSL configuration on the relay server.&#x0a;&#x0a;After the initial handshake, the connection is end-to-end encrypted.&#x0a;&#x0a;⚠️ Disable if your relay server doesn't support TLS/SSL.&#x0a;&#x0a;Note: Changing this setting only affects NEW connections. Reconnect existing sessions to apply."/>
+                                <!-- Info Icon with indicator -->
+                                <TextBlock Text="ℹ️ Hover for details" 
+                                          FontSize="10"
+                                          Opacity="0.5"
+                                          Foreground="{DynamicResource TextControlForeground}"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+                
+                <!-- Theme Switcher -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                    <Button Name="ThemeAutoButton" 
+                            Classes="theme-switch"
+                            Content="🌓 Auto"
+                            Click="ThemeAutoButton_Click"
+                            ToolTip.Tip="Auto-detect system theme"/>
+                    <Button Name="ThemeLightButton" 
+                            Classes="theme-switch"
+                            Content="☀️ Light"
+                            Click="ThemeLightButton_Click"
+                            ToolTip.Tip="Light theme"/>
+                    <Button Name="ThemeDarkButton" 
+                            Classes="theme-switch"
+                            Content="🌙 Dark"
+                            Click="ThemeDarkButton_Click"
+                            ToolTip.Tip="Dark theme"/>
+                </StackPanel>
+            </Grid>
+            
+            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                <Button Name="RefreshButton" 
+                        Classes="secondary"
+                        Content="Refresh"
+                        Click="RefreshButton_Click"/>
+                <Button Name="ConnectAllButton" 
+                        Classes="action"
+                        Content="Connect All"
+                        Click="ConnectAllButton_Click"
+                        IsEnabled="False"/>
+                <Button Name="DisconnectAllButton" 
+                        Classes="disconnect"
+                        Content="Disconnect All"
+                        Click="DisconnectAllButton_Click"
+                        IsEnabled="False"/>
+                <Button Name="LockButton" 
+                        Classes="secondary"
+                        Content="Lock"
+                        Click="LockButton_Click"
+                        IsVisible="False"
+                        ToolTip.Tip="Lock application with password. Your sessions remain opened in the background."/>
+            </StackPanel>
+            
+            <!-- Search Bar -->
+            <TextBox Name="SearchTextBox"
+                     Classes="search"
+                     Watermark="🔍 Search sessions (device name, session ID, organization, port...)"
+                     Margin="0,15,0,0"
+                     Padding="12,10"
+                     FontSize="14"
+                     Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                     BorderBrush="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                     BorderThickness="1"
+                     CornerRadius="6"/>
+        </StackPanel>
+
+        <!-- Main Content -->
+        <ScrollViewer Grid.Row="1">
+            <StackPanel>
+                <!-- Error Message -->
+                <Border Name="ErrorTextBlock"
+                        Classes="error-container"
+                        IsVisible="False">
+                    <StackPanel>
+                        <TextBlock Text="Error" 
+                                   FontWeight="Bold" 
+                                   FontSize="14"
+                                   Foreground="#FF3F5F"
+                                   Margin="0,0,0,5"/>
+                        <TextBlock Name="ErrorMessageText"
+                                   Classes="error"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+                
+                <!-- Empty State -->
+                <StackPanel Name="EmptyTextBlock"
+                            IsVisible="False"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            Margin="0,80,0,0">
+                    <TextBlock Text="📭"
+                               FontSize="48"
+                               HorizontalAlignment="Center"
+                               Margin="0,0,0,15"/>
+                    <TextBlock Classes="empty"
+                               Text="No active sessions available"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Classes="empty"
+                               FontSize="13"
+                               Text="Sessions will appear here when they are created"
+                               HorizontalAlignment="Center"
+                               Margin="0,5,0,0"/>
+                </StackPanel>
+                
+                <!-- Sessions List (Flat view for now, grouped by binding) -->
+                <ListBox Name="SessionsListBox" Background="Transparent" BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="windows:SessionViewModel">
+                            <Grid Margin="0" IsEnabled="{Binding SessionInfo.enabled}">
+                                <Grid.Styles>
+                                    <Style Selector="Grid:disabled">
+                                        <Setter Property="Opacity" Value="0.5"/>
+                                    </Style>
+                                </Grid.Styles>
+                                
+                                <StackPanel>
+                                    <!-- Session ID -->
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Classes="session-detail-label"
+                                                   Text="Session: "
+                                                   VerticalAlignment="Center"/>
+                                        <TextBlock Classes="session-detail"
+                                                   Text="{Binding SessionInfo.session_id}"
+                                                   VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    
+                                    <!-- Local Endpoint -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                        <TextBlock Classes="session-detail-label"
+                                                   Text="Local Endpoint: "
+                                                   VerticalAlignment="Center"/>
+                                        <TextBlock Classes="session-detail"
+                                                   Text="{Binding LocalPortDisplay}"
+                                                   VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    
+                                    <!-- Local App Connection Status -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"
+                                                IsVisible="{Binding IsConnectedLocal}">
+                                        <TextBlock Classes="session-detail-label"
+                                                   Text="Local Apps: "
+                                                   VerticalAlignment="Center"/>
+                                        <TextBlock Classes="session-detail"
+                                                   Text="{Binding LocalAppConnectionStatus}"
+                                                   VerticalAlignment="Center"
+                                                   FontWeight="Medium"/>
+                                    </StackPanel>
+                                    
+                                    <!-- Target Info -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                        <TextBlock Classes="session-detail-label"
+                                                   Text="Target Device: "
+                                                   VerticalAlignment="Center"/>
+                                        <TextBlock Classes="session-detail"
+                                                   VerticalAlignment="Center">
+                                            <Run Text="{Binding TargetDeviceDisplay}"/>
+                                            <Run Text=":"/>
+                                            <Run Text="{Binding SessionInfo.target_port}"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                    
+                                    <!-- Organization Info (Tenant / Location / Group) -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4"
+                                                IsVisible="{Binding HasOrganizationInfo}">
+                                        <TextBlock Classes="session-detail-label"
+                                                   Text="Organization: "
+                                                   VerticalAlignment="Center"/>
+                                        <TextBlock Classes="session-organization"
+                                                   Text="{Binding OrganizationDisplay}"
+                                                   VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    
+                                    <!-- Status -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                        <TextBlock Classes="session-detail-label"
+                                                   Text="Status: "
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,8,0"/>
+                                        
+                                        <!-- Connecting -->
+                                        <Border Classes="status-chip status-waiting"
+                                                IsVisible="{Binding ShowConnectingChip}">
+                                            <TextBlock Classes="status-text"
+                                                       Text="{Binding ConnectionStatus}"
+                                                       Foreground="#D68100"/>
+                                        </Border>
+                                        
+                                        <!-- Ready - Port listening but no app connected -->
+                                        <Border Classes="status-chip status-waiting"
+                                                IsVisible="{Binding ShowReadyChip}">
+                                            <TextBlock Classes="status-text"
+                                                       Text="{Binding ConnectionStatus}"
+                                                       Foreground="#D68100"/>
+                                        </Border>
+                                        
+                                        <!-- Connected - App(s) actively connected -->
+                                        <Border Classes="status-chip status-active"
+                                                IsVisible="{Binding ShowConnectedChip}">
+                                            <TextBlock Classes="status-text"
+                                                       Text="{Binding ConnectionStatus}"
+                                                       Foreground="#00A344"/>
+                                        </Border>
+                                        
+                                        <!-- Disconnecting -->
+                                        <Border Classes="status-chip status-disconnecting"
+                                                IsVisible="{Binding ShowDisconnectingChip}">
+                                            <TextBlock Classes="status-text"
+                                                       Text="{Binding ConnectionStatus}"
+                                                       Foreground="#757575"/>
+                                        </Border>
+                                        
+                                        <!-- Disabled -->
+                                        <Border Classes="status-chip status-disabled"
+                                                IsVisible="{Binding ShowDisabledChip}">
+                                            <TextBlock Classes="status-text"
+                                                       Text="{Binding ConnectionStatus}"
+                                                       Foreground="#FF3F5F"/>
+                                        </Border>
+                                        
+                                        <!-- Ready to Connect (Device online and ready) -->
+                                        <Border Classes="status-chip status-active"
+                                                IsVisible="{Binding ShowReadyToConnectChip}">
+                                            <TextBlock Classes="status-text"
+                                                       Text="{Binding ConnectionStatus}"
+                                                       Foreground="#00A344"/>
+                                        </Border>
+                                        
+                                        <!-- Waiting (Device offline or not responding) -->
+                                        <Border Classes="status-chip status-waiting"
+                                                IsVisible="{Binding ShowWaitingChip}">
+                                            <TextBlock Classes="status-text"
+                                                       Text="{Binding ConnectionStatus}"
+                                                       Foreground="#D68100"/>
+                                        </Border>
+                                        
+                                        <!-- Active (fallback) -->
+                                        <Border Classes="status-chip status-active"
+                                                IsVisible="{Binding ShowActiveChip}">
+                                            <TextBlock Classes="status-text"
+                                                       Text="{Binding ConnectionStatus}"
+                                                       Foreground="#00A344"/>
+                                        </Border>
+                                    </StackPanel>
+                                    
+                                    <!-- Performance/Throughput Display (below Status) -->
+                                    <Border IsVisible="{Binding IsConnectedLocal}"
+                                            Background="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"
+                                            CornerRadius="6"
+                                            Padding="12,10"
+                                            Margin="0,0,0,12"
+                                            BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                            BorderThickness="1">
+                                        <StackPanel>
+                                            <TextBlock Text="📊 Performance"
+                                                       FontSize="12"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextControlForeground}"
+                                                       Margin="0,0,0,8"/>
+                                            
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <!-- Upload -->
+                                                <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                                    <TextBlock Text="Upload"
+                                                               FontSize="11"
+                                                               Foreground="{DynamicResource TextControlForeground}"
+                                                               Opacity="0.6"
+                                                               Margin="0,0,0,4"/>
+                                                    <TextBlock Text="{Binding UploadSpeedDisplay}"
+                                                               FontSize="16"
+                                                               FontWeight="Bold"
+                                                               Foreground="{DynamicResource TextControlForeground}"
+                                                               Margin="0,0,0,4"/>
+                                                    <TextBlock FontSize="10"
+                                                               Foreground="{DynamicResource TextControlForeground}"
+                                                               Opacity="0.5">
+                                                        <Run Text="Total: "/>
+                                                        <Run Text="{Binding TotalUploadDisplay}"/>
+                                                    </TextBlock>
+                                                </StackPanel>
+
+                                                <!-- Download -->
+                                                <StackPanel Grid.Column="1" Margin="0,0,8,0">
+                                                    <TextBlock Text="Download"
+                                                               FontSize="11"
+                                                               Foreground="{DynamicResource TextControlForeground}"
+                                                               Opacity="0.6"
+                                                               Margin="0,0,0,4"/>
+                                                    <TextBlock Text="{Binding DownloadSpeedDisplay}"
+                                                               FontSize="16"
+                                                               FontWeight="Bold"
+                                                               Foreground="{DynamicResource TextControlForeground}"
+                                                               Margin="0,0,0,4"/>
+                                                    <TextBlock FontSize="10"
+                                                               Foreground="{DynamicResource TextControlForeground}"
+                                                               Opacity="0.5">
+                                                        <Run Text="Total: "/>
+                                                        <Run Text="{Binding TotalDownloadDisplay}"/>
+                                                    </TextBlock>
+                                                </StackPanel>
+
+                                                <!-- Ping -->
+                                                <StackPanel Grid.Column="2">
+                                                    <TextBlock Text="Latency"
+                                                               FontSize="11"
+                                                               Foreground="{DynamicResource TextControlForeground}"
+                                                               Opacity="0.6"
+                                                               Margin="0,0,0,4"/>
+                                                    <TextBlock Text="{Binding CurrentPingDisplay}"
+                                                               FontSize="16"
+                                                               FontWeight="Bold"
+                                                               Foreground="{DynamicResource TextControlForeground}"
+                                                               Margin="0,0,0,4"/>
+                                                    <TextBlock Text="{Binding PingQuality}"
+                                                               FontSize="10"
+                                                               Foreground="{DynamicResource TextControlForeground}"
+                                                               Opacity="0.7"
+                                                               FontWeight="Medium"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+                                    
+                                    <!-- Action Buttons (moved to bottom left) -->
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Content="Connect"
+                                                Tag="{Binding}"
+                                                Click="ConnectButton_Click"
+                                                Classes="action"
+                                                IsEnabled="{Binding CanConnect}"/>
+                                        <Button Content="Disconnect"
+                                                Tag="{Binding}"
+                                                Click="DisconnectButton_Click"
+                                                Classes="disconnect"
+                                                IsVisible="{Binding IsConnectedLocal}"/>
+                                        <Button Content="Copy"
+                                                Tag="{Binding}"
+                                                Click="CopyConnectionButton_Click"
+                                                Classes="copy"
+                                                IsVisible="{Binding IsConnectedLocal}"
+                                                ToolTip.Tip="Copy connection string to clipboard"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </StackPanel>
+        </ScrollViewer>
+        
+        <!-- Footer Status Bar -->
+        <Border Grid.Row="2" 
+                Classes="status-bar-container"
+                Padding="15,10"
+                CornerRadius="6"
+                BorderThickness="1"
+                Margin="0,20,0,0">
+            <TextBlock Name="StatusTextBlock"
+                       Classes="status-bar"
+                       Text="Ready"
+                       HorizontalAlignment="Center"/>
+        </Border>
+    </Grid>
+</Window>
+

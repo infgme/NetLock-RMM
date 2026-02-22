@@ -77,5 +77,43 @@ namespace Helper
                 return false;
             }
         }
+        
+        public static async Task<string> Get_Request_With_Api_Key(string url, bool membersPortal)
+        {
+            try
+            {
+                string api_key = await NetLock_RMM_Server.MySQL.Handler.Get_Api_Key(membersPortal);
+
+                using (var httpClient = new HttpClient())
+                {
+                    // Set Header
+                    httpClient.DefaultRequestHeaders.Add("X-Api-Key", api_key);
+
+                    // GET Request absenden
+                    var response = await httpClient.GetAsync(url);
+                    
+                    if (response.IsSuccessStatusCode)
+                    {
+                        // Read response
+                        var result = await response.Content.ReadAsStringAsync();
+                        Logging.Handler.Debug("Online_Mode.Handler.Get_Request_With_Api_Key", "Result", result);
+
+                        return result;
+                    }
+                    else
+                    {
+                        // Error handling
+                        Logging.Handler.Debug("Online_Mode.Handler.Get_Request_With_Api_Key", "Request failed", response.ReasonPhrase);
+                        return String.Empty;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.ToString());
+                Logging.Handler.Error("Online_Mode.Handler.Get_Request_With_Api_Key", "General error", ex.ToString());
+                return String.Empty;
+            }
+        }
     }
 }

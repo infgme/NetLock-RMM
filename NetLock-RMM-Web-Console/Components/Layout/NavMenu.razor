@@ -5,6 +5,7 @@
 @using Microsoft.AspNetCore.DataProtection
 @using System.Text.Json
 @using System.Security.Claims
+@using NetLock_RMM_Web_Console.Classes.Members_Portal
 
 @inject NavigationManager NavigationManager
 @inject ILocalStorageService localStorage
@@ -12,6 +13,10 @@
 @inject IDataProtectionProvider DataProtectionProvider
 @inject IStringLocalizer<Layout.NavMenu> Localizer
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NetLock_RMM_Web_Console.Classes.Helper.TenantUpdateService TenantUpdateService
+@inject IDialogService DialogService
+
+@implements IDisposable
 
 <AuthorizeView>
     <Authorized>
@@ -48,8 +53,7 @@
                                   DebounceInterval="300"
                                   OnDebounceIntervalElapsed="FilterTenants" />
                 </div>
-
-
+                
                 @{
 					if (tenants_full_access)
 					{
@@ -118,13 +122,13 @@
                 }
 
             </MudNavGroup>
-
-            <MudNavLink Disabled="true"></MudNavLink>
-            <MudNavLink Disabled="true"></MudNavLink>
-
+            
             @{
                 if (permissions_automation_enabled)
                 {
+                    <MudNavLink Disabled="true"></MudNavLink>
+                    <MudNavLink Disabled="true"></MudNavLink>
+
                     <MudNavLink Icon="@Icons.Material.Filled.AutoMode" Href="/automations">@Localizer["automations"]</MudNavLink>
                 }
             }
@@ -188,33 +192,43 @@
                     </MudNavGroup>
                 }
             }
+            
+            @{
+                if (permissions_relay_server_enabled)
+                {
+                    <MudNavLink Disabled="true"></MudNavLink>
+                    <MudNavLink Disabled="true"></MudNavLink>
 
-            <MudNavLink Disabled="true"></MudNavLink>
-            <MudNavLink Disabled="true"></MudNavLink>
-
+                    <MudNavLink Icon="@Icons.Material.Filled.Router" OnClick="@Relay_Dialog">Relay Server</MudNavLink>
+                }
+            }
+            
             @{
                 if (permissions_events_enabled)
                 {
+                    <MudNavLink Disabled="true"></MudNavLink>
+                    <MudNavLink Disabled="true"></MudNavLink>
+
                     <MudNavLink Icon="@Icons.Material.Filled.TextSnippet" Href="/events">@Localizer["events"]</MudNavLink>
                 }
             }
-
-            <MudNavLink Disabled="true"></MudNavLink>
-            <MudNavLink Disabled="true"></MudNavLink>
-
+            
             @{
                 if (permissions_users_enabled)
                 {
+                    <MudNavLink Disabled="true"></MudNavLink>
+                    <MudNavLink Disabled="true"></MudNavLink>
+
                     <MudNavLink Icon="@Icons.Material.Filled.Group" Href="/users">@Localizer["users"]</MudNavLink>
                 }
             }
-
-            <MudNavLink Disabled="true"></MudNavLink>
-            <MudNavLink Disabled="true"></MudNavLink>
-
+            
             @{
                 if (permissions_settings_enabled)
                 {
+                    <MudNavLink Disabled="true"></MudNavLink>
+                    <MudNavLink Disabled="true"></MudNavLink>
+
                     <MudNavGroup Icon="@Icons.Material.Filled.Settings" Title="@Localizer["settings"]" Expanded="false">
                         @{
                             if (permissions_settings_notifications_enabled)
@@ -235,7 +249,77 @@
             <MudNavLink Disabled="true"></MudNavLink>
             <MudNavLink Disabled="true"></MudNavLink>
 
-            <!--<MudNavLink Icon="@Icons.Material.Filled.RocketLaunch" Href="https://bookings.netlockrmm.com/netlockrmm/netlock-rmm-demo-q-a" Target="_blank">Pro Membership!</MudNavLink>-->
+            @if (!License.CodeSigned)
+            {
+                <div style="position: relative; margin: 8px;">
+                    <MudButton Href="https://netlockrmm.com/pricing" 
+                               Target="_blank" 
+                               Variant="Variant.Filled" 
+                               FullWidth="true"
+                               Style="background: linear-gradient(135deg, #B8860B 0%, #FFD700 50%, #DAA520 100%); color: #FFFFFF; font-weight: bold; text-transform: none; box-shadow: 0 2px 10px rgba(255, 215, 0, 0.4); position: relative; overflow: hidden;"
+                               StartIcon="@Icons.Material.Filled.RocketLaunch">
+                        <span style="position: relative; z-index: 1;">Go Pro!</span>
+                    </MudButton>
+                    <div class="gold-particles">
+                        <span class="particle"></span>
+                        <span class="particle"></span>
+                        <span class="particle"></span>
+                        <span class="particle"></span>
+                        <span class="particle"></span>
+                        <span class="particle"></span>
+                    </div>
+                </div>
+                
+                <style>
+                    .gold-particles {
+                        position: absolute;
+                        top: 0;
+                        left: 0;
+                        right: 0;
+                        bottom: 0;
+                        pointer-events: none;
+                        overflow: hidden;
+                        border-radius: 4px;
+                    }
+                    .gold-particles .particle {
+                        position: absolute;
+                        width: 4px;
+                        height: 4px;
+                        background: radial-gradient(circle, #FFD700 0%, #FFA500 100%);
+                        border-radius: 50%;
+                        animation: float-particle 3s ease-in-out infinite;
+                        box-shadow: 0 0 6px #FFD700, 0 0 10px #FFA500;
+                    }
+                    .gold-particles .particle:nth-child(1) { left: 10%; animation-delay: 0s; animation-duration: 2.5s; }
+                    .gold-particles .particle:nth-child(2) { left: 25%; animation-delay: 0.5s; animation-duration: 3s; }
+                    .gold-particles .particle:nth-child(3) { left: 45%; animation-delay: 1s; animation-duration: 2.8s; }
+                    .gold-particles .particle:nth-child(4) { left: 65%; animation-delay: 1.5s; animation-duration: 3.2s; }
+                    .gold-particles .particle:nth-child(5) { left: 80%; animation-delay: 0.3s; animation-duration: 2.6s; }
+                    .gold-particles .particle:nth-child(6) { left: 90%; animation-delay: 0.8s; animation-duration: 2.9s; }
+                    @@keyframes float-particle {
+                        0%, 100% { 
+                            transform: translateY(30px) scale(0);
+                            opacity: 0;
+                        }
+                        10% {
+                            opacity: 1;
+                            transform: translateY(25px) scale(1);
+                        }
+                        90% {
+                            opacity: 1;
+                            transform: translateY(-5px) scale(1);
+                        }
+                        100% {
+                            transform: translateY(-10px) scale(0);
+                            opacity: 0;
+                        }
+                    }
+                </style>
+            }
+
+            <MudNavLink Disabled="true"></MudNavLink>
+            <MudNavLink Disabled="true"></MudNavLink>
+
         </MudNavMenu>
 
     </Authorized>
@@ -266,6 +350,8 @@
     private bool permissions_settings_notifications_enabled = false;
     private bool permissions_settings_system_enabled = false;
     private bool permissions_settings_protocols_enabled = false;
+    private bool permissions_relay_server_enabled = false;
+    
     public static List<string> permissions_tenants_list = new List<string> { };
 
 	public bool tenants_full_access = false; // If the user has full access to all tenants, this will be true.
@@ -336,21 +422,22 @@
             permissions_dashboard_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "dashboard_enabled");
             permissions_devices_authorized_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "devices_authorized_enabled");
             permissions_devices_unauthorized_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "devices_unauthorized_enabled");
-            permissions_tenants_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "devices_unauthorized_enabled");
-            permissions_automation_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "devices_unauthorized_enabled");
-            permissions_policies_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "devices_unauthorized_enabled");
-            permissions_collections_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "devices_unauthorized_enabled");
-            collections_antivirus_controlled_folder_access_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "devices_unauthorized_enabled");
-            collections_sensors_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "devices_unauthorized_enabled");
-            collections_scripts_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "devices_unauthorized_enabled");
-            collections_jobs_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "devices_unauthorized_enabled");
-            collections_files_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "devices_unauthorized_enabled");
-            permissions_events_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "devices_unauthorized_enabled");
-            permissions_users_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "devices_unauthorized_enabled");
-            permissions_settings_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "devices_unauthorized_enabled");
-            permissions_settings_notifications_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "devices_unauthorized_enabled");
-            permissions_settings_system_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "devices_unauthorized_enabled");
-            permissions_settings_protocols_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "devices_unauthorized_enabled");
+            permissions_tenants_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "tenants_enabled");
+            permissions_automation_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "automation_enabled");
+            permissions_policies_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "policies_enabled");
+            permissions_collections_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "collections_enabled");
+            collections_antivirus_controlled_folder_access_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "collections_antivirus_controlled_folder_access_enabled");
+            collections_sensors_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "collections_sensors_enabled");
+            collections_scripts_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "collections_scripts_enabled");
+            collections_jobs_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "collections_jobs_enabled");
+            collections_files_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "collections_files_enabled");
+            permissions_events_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "events_enabled");
+            permissions_users_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "users_enabled");
+            permissions_settings_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "settings_enabled");
+            permissions_settings_notifications_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "settings_notifications_enabled");
+            permissions_settings_system_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "settings_system_enabled");
+            permissions_settings_protocols_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "settings_protocols_enabled");
+            permissions_relay_server_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "relay_server_enabled");
 			permissions_tenants_list = await Classes.Authentication.Permissions.Get_Tenants(netlock_username, false);
             tenants_full_access = await Classes.Authentication.Permissions.Verify_Tenants_Full_Access(netlock_username);
 
@@ -368,6 +455,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Subscribe to tenant update events
+        TenantUpdateService.OnTenantUpdated += HandleTenantUpdated;
+        
         await base.OnInitializedAsync();
     }
 
@@ -377,6 +467,28 @@
         {
             await AfterInitializedAsync();
         }
+    }
+
+    private async void HandleTenantUpdated()
+    {
+        // Reload permissions. We also need to do that to add new tenants to the list, without the user having to refresh the page.
+        if (!await Permissions())
+            return;
+        
+        // Reload tenant data
+        await Get_Tenants();
+        await Get_Locations();
+        await Get_Groups();
+        await Get_Devices();
+        
+        // Update UI
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        // Unsubscribe from events to prevent memory leaks
+        TenantUpdateService.OnTenantUpdated -= HandleTenantUpdated;
     }
 
     private async Task AfterInitializedAsync()
@@ -706,4 +818,30 @@
         NavigationManager.NavigateTo(Application_Paths.redirect_path);
         NavigationManager.NavigateTo(path);
     }
+    
+    #region Relay Server
+
+    private bool relay_dialog_open = false;
+
+    private async Task Relay_Dialog()
+    {
+        if (relay_dialog_open)
+            return;
+
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            FullWidth = true,
+            MaxWidth = MaxWidth.ExtraLarge,
+            BackgroundClass = "dialog-blurring",
+        };
+
+        relay_dialog_open = true;
+
+        await (await DialogService.ShowAsync<Relay.Relay_Manager_Dialog>(string.Empty, options)).Result;
+
+        relay_dialog_open = false;
+    }
+
+    #endregion
 }

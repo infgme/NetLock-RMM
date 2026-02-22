@@ -84,9 +84,15 @@
                         <MudTextField Class="ml-2 mt-2" Label="@Localizer["mail_address"]" T="string" @bind-Value="@mail" Immediate="@true" Variant="Variant.Filled" Style="max-width: 500px" />
                         <MudTextField Class="ml-2 mt-2" Label="@Localizer["phone"]" T="string" @bind-Value="@phone" Immediate="@true" Variant="Variant.Filled" Style="max-width: 500px" />
 
-                        <MudSelect Class="ml-2 mt-3 mb-2" T="string" @bind-Value="role" Label="@Localizer["role"]" AnchorOrigin="Origin.BottomCenter" Style="max-width: 500px">
+                        <MudSelect Class="ml-2 mt-3 mb-2" T="string" @bind-Value="role" Label="@Localizer["role"]" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" Style="max-width: 500px">
                             <MudSelectItem Value="@("Administrator")" />
                             <!--<MudSelectItem Value="@("Moderator")" />-->
+                        </MudSelect>
+
+                        <MudSelect Class="ml-2 mt-2 mb-2" T="string" @bind-Value="auth_mode" Label="Auth Mode" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter"  Style="max-width: 500px">
+                            <MudSelectItem Value="@("Password")">Password</MudSelectItem>
+                            <MudSelectItem Value="@("SSO")">SSO</MudSelectItem>
+                            <MudSelectItem Value="@("Password & SSO")">Password & SSO</MudSelectItem>
                         </MudSelect>
                     </MudPaper>
 
@@ -101,7 +107,7 @@
                 </MudTabPanel>
 
                 <MudTabPanel Text="@Localizer["permissions"]">
-
+                    
                     <MudPaper>
 
                         <MudText Class="ml-2 mt-0" Typo="Typo.h5">@Localizer["assigned_tenants"]</MudText>
@@ -168,7 +174,10 @@
 
                     </MudPaper>
 
-                    <MudPaper Class="mt-5">
+                    <MudButton Class="mt-5 ml-2 mr-2" Size="Size.Small" Variant="Variant.Filled" OnClick="@Export_Permissions_Template" Color="Color.Default" StartIcon="@Icons.Material.Filled.FileDownload">Export Permissions</MudButton>
+                    <MudButton Class="mt-5 ml-2" Size="Size.Small" Variant="Variant.Filled" OnClick="@Import_Permissions_Template" Color="Color.Default" StartIcon="@Icons.Material.Filled.FileUpload">Import Permissions</MudButton>
+                    
+                    <MudPaper Class="mt-3">
                         <MudText Class="ml-2 mt-0" Typo="Typo.h5">@Localizer["tenant_management"]</MudText>
                         <MudSwitch Class="ml-2" T="bool" @bind-Value="@tenants_enabled" Label="@Localizer["enabled"]" Color="Color.Primary" />
                         <MudText Class="ml-3 mt-3" Typo="Typo.body1">@Localizer["tenants"]</MudText>
@@ -332,12 +341,23 @@
                         <MudCheckBox Class="ml-2" T="bool" @bind-Value="@settings_notifications_webhook_add" Label="@Localizer["add"]" Color="Color.Primary" />
                         <MudCheckBox Class="ml-2" T="bool" @bind-Value="@settings_notifications_webhook_edit" Label="@Localizer["edit"]" Color="Color.Primary" />
                         <MudCheckBox Class="ml-2" T="bool" @bind-Value="@settings_notifications_webhook_delete" Label="@Localizer["delete"]" Color="Color.Primary" />
-                        
+
                         <MudText Class="ml-3 mt-3" Typo="Typo.h5">@Localizer["system_settings"]</MudText>
                         <MudSwitch Class="ml-2" T="bool" @bind-Value="@settings_system_enabled" Label="@Localizer["enabled"]" Color="Color.Primary" />
+                        <MudCheckBox Class="ml-2" T="bool" @bind-Value="@settings_system_mysql_console" Label="MySQL Console" Color="Color.Primary" />
+
 
                         <MudText Class="ml-3 mt-3" Typo="Typo.h5">@Localizer["system_protocols"]</MudText>
                         <MudSwitch Class="ml-2" T="bool" @bind-Value="@settings_protocols_enabled" Label="@Localizer["enabled"]" Color="Color.Primary" />
+                    </MudPaper>
+
+                    <MudPaper Class="mt-5">
+                        <MudText Class="ml-2 mt-0" Typo="Typo.h5">Relay Server</MudText>
+                        <MudSwitch Class="ml-2" T="bool" @bind-Value="@relay_server_enabled" Label="@Localizer["enabled"]" Color="Color.Primary" />
+                        <MudCheckBox Class="ml-2" T="bool" @bind-Value="@relay_server_manage" Label="@Localizer["manage"]" Color="Color.Primary" />
+                        <MudCheckBox Class="ml-2" T="bool" @bind-Value="@relay_server_add" Label="@Localizer["add"]" Color="Color.Primary" />
+                        <MudCheckBox Class="ml-2" T="bool" @bind-Value="@relay_server_edit" Label="@Localizer["edit"]" Color="Color.Primary" />
+                        <MudCheckBox Class="ml-2" T="bool" @bind-Value="@relay_server_delete" Label="@Localizer["delete"]" Color="Color.Primary" />
                     </MudPaper>
 
                 </MudTabPanel>
@@ -445,6 +465,7 @@
     private string mail = String.Empty;
     private string phone = String.Empty;
     private string role = String.Empty;
+    private string auth_mode = "Password";
     private bool two_factor_enabled = false;
 
 
@@ -535,7 +556,7 @@
     private bool collections_files_edit = false;
     private bool collections_files_delete = false;
     private bool collections_files_netlock = false;
-    
+
     //permissions: events
     private bool events_enabled = false;
 
@@ -587,12 +608,20 @@
     private bool settings_notifications_webhook_test = false;
     private bool settings_notifications_webhook_edit = false;
     private bool settings_notifications_webhook_delete = false;
-    
+
     private bool settings_system_enabled = false;
+    private bool settings_system_mysql_console = false;
     private bool settings_protocols_enabled = false;
 
+    //permissions: relay_server
+    private bool relay_server_enabled = false;
+    private bool relay_server_manage = false;
+    private bool relay_server_add = false;
+    private bool relay_server_edit = false;
+    private bool relay_server_delete = false;
+
     public class User_Permissions
-    {       
+    {
         //permissions: dashboard
         public bool dashboard_enabled { get; set; }
 
@@ -729,9 +758,17 @@
         public bool settings_notifications_webhook_test { get; set; }
         public bool settings_notifications_webhook_edit { get; set; }
         public bool settings_notifications_webhook_delete { get; set; }
-        
+
         public bool settings_system_enabled { get; set; }
+        public bool settings_system_mysql_console { get; set; }
         public bool settings_protocols_enabled { get; set; }
+
+        //permissions: relay_server
+        public bool relay_server_enabled { get; set; }
+        public bool relay_server_manage { get; set; }
+        public bool relay_server_add { get; set; }
+        public bool relay_server_edit { get; set; }
+        public bool relay_server_delete { get; set; }
     }
 
     private async Task Load_User()
@@ -761,6 +798,19 @@
                         mail = reader["mail"].ToString() ?? String.Empty;
                         phone = reader["phone"].ToString() ?? String.Empty;
                         role = reader["role"].ToString() ?? String.Empty;
+                        
+                        // Load auth_mode (default to "Password" if not present)
+                        try
+                        {
+                            auth_mode = reader["auth_mode"]?.ToString() ?? "Password";
+                            if (string.IsNullOrEmpty(auth_mode))
+                                auth_mode = "Password";
+                        }
+                        catch
+                        {
+                            auth_mode = "Password";
+                        }
+                        
                         two_factor_enabled_int = Convert.ToInt32(reader["two_factor_enabled"].ToString());
                         permissions_json = reader["permissions"].ToString() ?? String.Empty;
                         tenants_json = reader["tenants"].ToString() ?? String.Empty;
@@ -922,7 +972,7 @@
                 settings_notifications_ntfysh_test = settings_notifications_ntfysh_test,
                 settings_notifications_ntfysh_edit = settings_notifications_ntfysh_edit,
                 settings_notifications_ntfysh_delete = settings_notifications_ntfysh_delete,
-                
+
                 //permissions: settings -> notifications -> webhook
                 settings_notifications_webhook_enabled = settings_notifications_webhook_enabled,
                 settings_notifications_webhook_add = settings_notifications_webhook_add,
@@ -932,7 +982,15 @@
 
                 //permissions: settings_system
                 settings_system_enabled = settings_system_enabled,
+                settings_system_mysql_console = settings_system_mysql_console,
                 settings_protocols_enabled = settings_protocols_enabled,
+
+                //permissions: relay_server
+                relay_server_enabled = relay_server_enabled,
+                relay_server_manage = relay_server_manage,
+                relay_server_add = relay_server_add,
+                relay_server_edit = relay_server_edit,
+                relay_server_delete = relay_server_delete,
             };
 
         permissions_json = JsonSerializer.Serialize(permissions, new JsonSerializerOptions { WriteIndented = true });
@@ -968,7 +1026,7 @@
         {
             await conn.OpenAsync();
 
-            string execute_query = "UPDATE accounts SET username = @username, mail = @mail, phone = @phone, role = @role, two_factor_enabled = @two_factor_enabled, permissions = @permissions, tenants = @tenants WHERE username = @old_username;";
+            string execute_query = "UPDATE accounts SET username = @username, mail = @mail, phone = @phone, role = @role, auth_mode = @auth_mode, two_factor_enabled = @two_factor_enabled, permissions = @permissions, tenants = @tenants WHERE username = @old_username;";
 
             MySqlCommand cmd = new MySqlCommand(execute_query, conn);
             cmd.Parameters.AddWithValue("@username", username);
@@ -976,6 +1034,7 @@
             cmd.Parameters.AddWithValue("@mail", mail);
             cmd.Parameters.AddWithValue("@phone", phone);
             cmd.Parameters.AddWithValue("@role", role);
+            cmd.Parameters.AddWithValue("@auth_mode", auth_mode);
             cmd.Parameters.AddWithValue("@two_factor_enabled", two_factor_enabled);
             cmd.Parameters.AddWithValue("@permissions", permissions_json);
             cmd.Parameters.AddWithValue("@tenants", tenants_json);
@@ -1159,7 +1218,7 @@
             //permissions: settings -> notifications
             settings_notifications_enabled = GetBoolProperty(root, "settings_notifications_enabled");
 
-            //permissions: settings -> notifications -> mail    
+            //permissions: settings -> notifications -> mail
             settings_notifications_mail_enabled = GetBoolProperty(root, "settings_notifications_mail_enabled");
             settings_notifications_mail_add = GetBoolProperty(root, "settings_notifications_mail_add");
             settings_notifications_mail_smtp = GetBoolProperty(root, "settings_notifications_mail_smtp");
@@ -1187,7 +1246,7 @@
             settings_notifications_ntfysh_test = GetBoolProperty(root, "settings_notifications_ntfysh_test");
             settings_notifications_ntfysh_edit = GetBoolProperty(root, "settings_notifications_ntfysh_edit");
             settings_notifications_ntfysh_delete = GetBoolProperty(root, "settings_notifications_ntfysh_delete");
-            
+
             //permissions: settings -> notifications -> webhook
             settings_notifications_webhook_enabled = GetBoolProperty(root, "settings_notifications_webhook_enabled");
             settings_notifications_webhook_add = GetBoolProperty(root, "settings_notifications_webhook_add");
@@ -1196,7 +1255,15 @@
             settings_notifications_webhook_delete = GetBoolProperty(root, "settings_notifications_webhook_delete");
 
             settings_system_enabled = GetBoolProperty(root, "settings_system_enabled");
+            settings_system_mysql_console = GetBoolProperty(root, "settings_system_mysql_console");
             settings_protocols_enabled = GetBoolProperty(root, "settings_protocols_enabled");
+
+            //permissions: relay_server
+            relay_server_enabled = GetBoolProperty(root, "relay_server_enabled");
+            relay_server_manage = GetBoolProperty(root, "relay_server_manage");
+            relay_server_add = GetBoolProperty(root, "relay_server_add");
+            relay_server_edit = GetBoolProperty(root, "relay_server_edit");
+            relay_server_delete = GetBoolProperty(root, "relay_server_delete");
         }
         catch (Exception ex)
         {
@@ -1400,4 +1467,367 @@
 
         Logging.Handler.Debug("/user_settings -> Reset_Password_Dialog", "Result", result.Data.ToString());
     }
+
+    #region Permission Templates Export/Import
+
+    private async Task Export_Permissions_Template()
+    {
+        try
+        {
+            // Create permissions object with current values
+            User_Permissions permissions = new User_Permissions
+            {
+                //dashboard
+                dashboard_enabled = dashboard_enabled,
+
+                //permissions: devices
+                devices_authorized_enabled = devices_authorized_enabled,
+                devices_general = devices_general,
+                devices_software = devices_software,
+                devices_task_manager = devices_task_manager,
+                devices_antivirus = devices_antivirus,
+                devices_events = devices_events,
+                devices_remote_shell = devices_remote_shell,
+                devices_remote_file_browser = devices_remote_file_browser,
+                devices_remote_control = devices_remote_control,
+                devices_remote_eventlog_viewer = devices_remote_eventlog_viewer,
+                devices_deauthorize = devices_deauthorize,
+                devices_move = devices_move,
+
+                devices_unauthorized_enabled = devices_unauthorized_enabled,
+                devices_unauthorized_authorize = devices_unauthorized_authorize,
+
+                //permissions: tenants
+                tenants_enabled = tenants_enabled,
+                tenants_add = tenants_add,
+                tenants_manage = tenants_manage,
+                tenants_edit = tenants_edit,
+                tenants_delete = tenants_delete,
+                tenants_locations_add = tenants_locations_add,
+                tenants_locations_manage = tenants_locations_manage,
+                tenants_locations_edit = tenants_locations_edit,
+                tenants_locations_delete = tenants_locations_delete,
+                tenants_groups_add = tenants_groups_add,
+                tenants_groups_edit = tenants_groups_edit,
+                tenants_groups_delete = tenants_groups_delete,
+
+                //permissions: automation
+                automation_enabled = automation_enabled,
+                automation_add = automation_add,
+                automation_edit = automation_edit,
+                automation_delete = automation_delete,
+
+                //permissions: policies
+                policies_enabled = policies_enabled,
+                policies_add = policies_add,
+                policies_manage = policies_manage,
+                policies_edit = policies_edit,
+                policies_delete = policies_delete,
+
+                //permissions: collections
+                collections_enabled = collections_enabled,
+
+                //permissions: collections -> acfa
+                collections_antivirus_controlled_folder_access_enabled = collections_antivirus_controlled_folder_access_enabled,
+                collections_antivirus_controlled_folder_access_add = collections_antivirus_controlled_folder_access_add,
+                collections_antivirus_controlled_folder_access_manage = collections_antivirus_controlled_folder_access_manage,
+                collections_antivirus_controlled_folder_access_edit = collections_antivirus_controlled_folder_access_edit,
+                collections_antivirus_controlled_folder_access_delete = collections_antivirus_controlled_folder_access_delete,
+                collections_antivirus_controlled_folder_access_processes_add = collections_antivirus_controlled_folder_access_processes_add,
+                collections_antivirus_controlled_folder_access_processes_edit = collections_antivirus_controlled_folder_access_processes_edit,
+                collections_antivirus_controlled_folder_access_processes_delete = collections_antivirus_controlled_folder_access_processes_delete,
+
+                //permissions: collections -> sensors
+                collections_sensors_enabled = collections_sensors_enabled,
+                collections_sensors_add = collections_sensors_add,
+                collections_sensors_edit = collections_sensors_edit,
+                collections_sensors_delete = collections_sensors_delete,
+
+                //permissions: collections -> scripts
+                collections_scripts_enabled = collections_scripts_enabled,
+                collections_scripts_add = collections_scripts_add,
+                collections_scripts_edit = collections_scripts_edit,
+                collections_scripts_delete = collections_scripts_delete,
+
+                //permissions: collections -> jobs
+                collections_jobs_enabled = collections_jobs_enabled,
+                collections_jobs_add = collections_jobs_add,
+                collections_jobs_edit = collections_jobs_edit,
+                collections_jobs_delete = collections_jobs_delete,
+
+                //permissions: collections -> files
+                collections_files_enabled = collections_files_enabled,
+                collections_files_add = collections_files_add,
+                collections_files_edit = collections_files_edit,
+                collections_files_delete = collections_files_delete,
+                collections_files_netlock = collections_files_netlock,
+
+                //permissions: events
+                events_enabled = events_enabled,
+
+                //permissions: users
+                users_enabled = users_enabled,
+                users_add = users_add,
+                users_manage = users_manage,
+                users_edit = users_edit,
+                users_delete = users_delete,
+
+                //permissions: settings
+                settings_enabled = settings_enabled,
+
+                //permissions: settings -> notifications
+                settings_notifications_enabled = settings_notifications_enabled,
+
+                //permissions: settings -> notifications -> mail
+                settings_notifications_mail_enabled = settings_notifications_mail_enabled,
+                settings_notifications_mail_add = settings_notifications_mail_add,
+                settings_notifications_mail_smtp = settings_notifications_mail_smtp,
+                settings_notifications_mail_test = settings_notifications_mail_test,
+                settings_notifications_mail_edit = settings_notifications_mail_edit,
+                settings_notifications_mail_delete = settings_notifications_mail_delete,
+
+                //permissions: settings -> notifications -> ms teams
+                settings_notifications_microsoft_teams_enabled = settings_notifications_microsoft_teams_enabled,
+                settings_notifications_microsoft_teams_add = settings_notifications_microsoft_teams_add,
+                settings_notifications_microsoft_teams_test = settings_notifications_microsoft_teams_test,
+                settings_notifications_microsoft_teams_edit = settings_notifications_microsoft_teams_edit,
+                settings_notifications_microsoft_teams_delete = settings_notifications_microsoft_teams_delete,
+
+                //permissions: settings -> notifications -> telegram
+                settings_notifications_telegram_enabled = settings_notifications_telegram_enabled,
+                settings_notifications_telegram_add = settings_notifications_telegram_add,
+                settings_notifications_telegram_test = settings_notifications_telegram_test,
+                settings_notifications_telegram_edit = settings_notifications_telegram_edit,
+                settings_notifications_telegram_delete = settings_notifications_telegram_delete,
+
+                //permissions: settings -> notifications -> ntfysh
+                settings_notifications_ntfysh_enabled = settings_notifications_ntfysh_enabled,
+                settings_notifications_ntfysh_add = settings_notifications_ntfysh_add,
+                settings_notifications_ntfysh_test = settings_notifications_ntfysh_test,
+                settings_notifications_ntfysh_edit = settings_notifications_ntfysh_edit,
+                settings_notifications_ntfysh_delete = settings_notifications_ntfysh_delete,
+
+                //permissions: settings -> notifications -> webhook
+                settings_notifications_webhook_enabled = settings_notifications_webhook_enabled,
+                settings_notifications_webhook_add = settings_notifications_webhook_add,
+                settings_notifications_webhook_test = settings_notifications_webhook_test,
+                settings_notifications_webhook_edit = settings_notifications_webhook_edit,
+                settings_notifications_webhook_delete = settings_notifications_webhook_delete,
+
+                //permissions: settings_system
+                settings_system_enabled = settings_system_enabled,
+                settings_system_mysql_console = settings_system_mysql_console,
+                settings_protocols_enabled = settings_protocols_enabled,
+                
+                //permissions: relay_server
+                relay_server_enabled = relay_server_enabled,
+                relay_server_manage = relay_server_manage,
+                relay_server_add = relay_server_add,
+                relay_server_edit = relay_server_edit,
+                relay_server_delete = relay_server_delete,
+            };
+
+            string json = JsonSerializer.Serialize(permissions, new JsonSerializerOptions { WriteIndented = true });
+
+            // Download JSON file
+            string fileName = $"permissions_template_{username}_{DateTime.Now:yyyyMMdd_HHmmss}.json";
+            await JSRuntime.InvokeVoidAsync("downloadFile", fileName, json);
+
+            Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+            Snackbar.Add("Permissions template exported successfully.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("/user_settings -> Export_Permissions_Template", "Error", ex.ToString());
+            Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+            Snackbar.Add("Failed to export permissions template.", Severity.Error);
+        }
+    }
+
+    private async Task Import_Permissions_Template()
+    {
+        try
+        {
+            // Trigger file input via JavaScript
+            string json = await JSRuntime.InvokeAsync<string>("uploadJsonFile");
+
+            if (string.IsNullOrEmpty(json))
+            {
+                Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+                Snackbar.Add("No file selected or file is empty.", Severity.Warning);
+                return;
+            }
+
+            // Deserialize JSON
+            JsonDocument jsonDocument = JsonDocument.Parse(json);
+            JsonElement root = jsonDocument.RootElement;
+
+            // Apply all permissions from template
+            //dashboard
+            dashboard_enabled = GetBoolProperty(root, "dashboard_enabled");
+
+            //permissions: devices
+            devices_authorized_enabled = GetBoolProperty(root, "devices_authorized_enabled");
+            devices_general = GetBoolProperty(root, "devices_general");
+            devices_software = GetBoolProperty(root, "devices_software");
+            devices_task_manager = GetBoolProperty(root, "devices_task_manager");
+            devices_antivirus = GetBoolProperty(root, "devices_antivirus");
+            devices_events = GetBoolProperty(root, "devices_events");
+            devices_remote_shell = GetBoolProperty(root, "devices_remote_shell");
+            devices_remote_file_browser = GetBoolProperty(root, "devices_remote_file_browser");
+            devices_remote_control = GetBoolProperty(root, "devices_remote_control");
+            devices_remote_eventlog_viewer = GetBoolProperty(root, "devices_remote_eventlog_viewer");
+            devices_deauthorize = GetBoolProperty(root, "devices_deauthorize");
+            devices_move = GetBoolProperty(root, "devices_move");
+
+            devices_unauthorized_enabled = GetBoolProperty(root, "devices_unauthorized_enabled");
+            devices_unauthorized_authorize = GetBoolProperty(root, "devices_unauthorized_authorize");
+
+            //permissions: tenants
+            tenants_enabled = GetBoolProperty(root, "tenants_enabled");
+            tenants_add = GetBoolProperty(root, "tenants_add");
+            tenants_manage = GetBoolProperty(root, "tenants_manage");
+            tenants_edit = GetBoolProperty(root, "tenants_edit");
+            tenants_delete = GetBoolProperty(root, "tenants_delete");
+            tenants_locations_add = GetBoolProperty(root, "tenants_locations_add");
+            tenants_locations_manage = GetBoolProperty(root, "tenants_locations_manage");
+            tenants_locations_edit = GetBoolProperty(root, "tenants_locations_edit");
+            tenants_locations_delete = GetBoolProperty(root, "tenants_locations_delete");
+            tenants_groups_add = GetBoolProperty(root, "tenants_groups_add");
+            tenants_groups_edit = GetBoolProperty(root, "tenants_groups_edit");
+            tenants_groups_delete = GetBoolProperty(root, "tenants_groups_delete");
+
+            //permissions: automation
+            automation_enabled = GetBoolProperty(root, "automation_enabled");
+            automation_add = GetBoolProperty(root, "automation_add");
+            automation_edit = GetBoolProperty(root, "automation_edit");
+            automation_delete = GetBoolProperty(root, "automation_delete");
+
+            //permissions: policies
+            policies_enabled = GetBoolProperty(root, "policies_enabled");
+            policies_add = GetBoolProperty(root, "policies_add");
+            policies_manage = GetBoolProperty(root, "policies_manage");
+            policies_edit = GetBoolProperty(root, "policies_edit");
+            policies_delete = GetBoolProperty(root, "policies_delete");
+
+            //permissions: collections
+            collections_enabled = GetBoolProperty(root, "collections_enabled");
+
+            //permissions: collections -> acfa
+            collections_antivirus_controlled_folder_access_enabled = GetBoolProperty(root, "collections_antivirus_controlled_folder_access_enabled");
+            collections_antivirus_controlled_folder_access_add = GetBoolProperty(root, "collections_antivirus_controlled_folder_access_add");
+            collections_antivirus_controlled_folder_access_manage = GetBoolProperty(root, "collections_antivirus_controlled_folder_access_manage");
+            collections_antivirus_controlled_folder_access_edit = GetBoolProperty(root, "collections_antivirus_controlled_folder_access_edit");
+            collections_antivirus_controlled_folder_access_delete = GetBoolProperty(root, "collections_antivirus_controlled_folder_access_delete");
+            collections_antivirus_controlled_folder_access_processes_add = GetBoolProperty(root, "collections_antivirus_controlled_folder_access_processes_add");
+            collections_antivirus_controlled_folder_access_processes_edit = GetBoolProperty(root, "collections_antivirus_controlled_folder_access_processes_edit");
+            collections_antivirus_controlled_folder_access_processes_delete = GetBoolProperty(root, "collections_antivirus_controlled_folder_access_processes_delete");
+
+            //permissions: collections -> sensors
+            collections_sensors_enabled = GetBoolProperty(root, "collections_sensors_enabled");
+            collections_sensors_add = GetBoolProperty(root, "collections_sensors_add");
+            collections_sensors_edit = GetBoolProperty(root, "collections_sensors_edit");
+            collections_sensors_delete = GetBoolProperty(root, "collections_sensors_delete");
+
+            //permissions: collections -> scripts
+            collections_scripts_enabled = GetBoolProperty(root, "collections_scripts_enabled");
+            collections_scripts_add = GetBoolProperty(root, "collections_scripts_add");
+            collections_scripts_edit = GetBoolProperty(root, "collections_scripts_edit");
+            collections_scripts_delete = GetBoolProperty(root, "collections_scripts_delete");
+
+            //permissions: collections -> jobs
+            collections_jobs_enabled = GetBoolProperty(root, "collections_jobs_enabled");
+            collections_jobs_add = GetBoolProperty(root, "collections_jobs_add");
+            collections_jobs_edit = GetBoolProperty(root, "collections_jobs_edit");
+            collections_jobs_delete = GetBoolProperty(root, "collections_jobs_delete");
+
+            //permissions: collections -> files
+            collections_files_enabled = GetBoolProperty(root, "collections_files_enabled");
+            collections_files_add = GetBoolProperty(root, "collections_files_add");
+            collections_files_edit = GetBoolProperty(root, "collections_files_edit");
+            collections_files_delete = GetBoolProperty(root, "collections_files_delete");
+            collections_files_netlock = GetBoolProperty(root, "collections_files_netlock");
+
+            //permissions: events
+            events_enabled = GetBoolProperty(root, "events_enabled");
+
+            //permissions: users
+            users_enabled = GetBoolProperty(root, "users_enabled");
+            users_add = GetBoolProperty(root, "users_add");
+            users_manage = GetBoolProperty(root, "users_manage");
+            users_edit = GetBoolProperty(root, "users_edit");
+            users_delete = GetBoolProperty(root, "users_delete");
+
+            //permissions: settings
+            settings_enabled = GetBoolProperty(root, "settings_enabled");
+
+            //permissions: settings -> notifications
+            settings_notifications_enabled = GetBoolProperty(root, "settings_notifications_enabled");
+
+            //permissions: settings -> notifications -> mail    
+            settings_notifications_mail_enabled = GetBoolProperty(root, "settings_notifications_mail_enabled");
+            settings_notifications_mail_add = GetBoolProperty(root, "settings_notifications_mail_add");
+            settings_notifications_mail_smtp = GetBoolProperty(root, "settings_notifications_mail_smtp");
+            settings_notifications_mail_test = GetBoolProperty(root, "settings_notifications_mail_test");
+            settings_notifications_mail_edit = GetBoolProperty(root, "settings_notifications_mail_edit");
+            settings_notifications_mail_delete = GetBoolProperty(root, "settings_notifications_mail_delete");
+
+            //permissions: settings -> notifications -> ms teams
+            settings_notifications_microsoft_teams_enabled = GetBoolProperty(root, "settings_notifications_microsoft_teams_enabled");
+            settings_notifications_microsoft_teams_add = GetBoolProperty(root, "settings_notifications_microsoft_teams_add");
+            settings_notifications_microsoft_teams_test = GetBoolProperty(root, "settings_notifications_microsoft_teams_test");
+            settings_notifications_microsoft_teams_edit = GetBoolProperty(root, "settings_notifications_microsoft_teams_edit");
+            settings_notifications_microsoft_teams_delete = GetBoolProperty(root, "settings_notifications_microsoft_teams_delete");
+
+            //permissions: settings -> notifications -> telegram
+            settings_notifications_telegram_enabled = GetBoolProperty(root, "settings_notifications_telegram_enabled");
+            settings_notifications_telegram_add = GetBoolProperty(root, "settings_notifications_telegram_add");
+            settings_notifications_telegram_test = GetBoolProperty(root, "settings_notifications_telegram_test");
+            settings_notifications_telegram_edit = GetBoolProperty(root, "settings_notifications_telegram_edit");
+            settings_notifications_telegram_delete = GetBoolProperty(root, "settings_notifications_telegram_delete");
+
+            //permissions: settings -> notifications -> ntfysh
+            settings_notifications_ntfysh_enabled = GetBoolProperty(root, "settings_notifications_ntfysh_enabled");
+            settings_notifications_ntfysh_add = GetBoolProperty(root, "settings_notifications_ntfysh_add");
+            settings_notifications_ntfysh_test = GetBoolProperty(root, "settings_notifications_ntfysh_test");
+            settings_notifications_ntfysh_edit = GetBoolProperty(root, "settings_notifications_ntfysh_edit");
+            settings_notifications_ntfysh_delete = GetBoolProperty(root, "settings_notifications_ntfysh_delete");
+
+            //permissions: settings -> notifications -> webhook
+            settings_notifications_webhook_enabled = GetBoolProperty(root, "settings_notifications_webhook_enabled");
+            settings_notifications_webhook_add = GetBoolProperty(root, "settings_notifications_webhook_add");
+            settings_notifications_webhook_test = GetBoolProperty(root, "settings_notifications_webhook_test");
+            settings_notifications_webhook_edit = GetBoolProperty(root, "settings_notifications_webhook_edit");
+            settings_notifications_webhook_delete = GetBoolProperty(root, "settings_notifications_webhook_delete");
+
+            settings_system_enabled = GetBoolProperty(root, "settings_system_enabled");
+            settings_system_mysql_console = GetBoolProperty(root, "settings_system_mysql_console");
+            settings_protocols_enabled = GetBoolProperty(root, "settings_protocols_enabled");
+            
+            //permissions: relay_server
+            relay_server_enabled = GetBoolProperty(root, "relay_server_enabled");
+            relay_server_manage = GetBoolProperty(root, "relay_server_manage");
+            relay_server_add = GetBoolProperty(root, "relay_server_add");
+            relay_server_edit = GetBoolProperty(root, "relay_server_edit");
+            relay_server_delete = GetBoolProperty(root, "relay_server_delete");
+
+            StateHasChanged();
+
+            Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+            Snackbar.Add("Permissions template imported successfully.", Severity.Success);
+        }
+        catch (JsonException)
+        {
+            Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+            Snackbar.Add("Invalid JSON format.", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("/user_settings -> Import_Permissions_Template", "Error", ex.ToString());
+            Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+            Snackbar.Add("Failed to import permissions template.", Severity.Error);
+        }
+    }
+
+    #endregion
 }

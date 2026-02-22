@@ -286,6 +286,11 @@
                         </div>
                     </div>
 
+                    @if (events_is_loading_more)
+                    {
+                        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mt-2" />
+                    }
+
                     <MudTable Class="mt-2" Height="43vh" FixedHeader="true" FixedFooter="true" Dense="true" Hover="true" @bind-RowsPerPage="events_rows_per_page" Items="@events_mysql_data" Filter="new Func<Events_Table, bool>(Events_Table_Filter_Func)">
                         <ToolBarContent>
                             <MudTextField Class="mt-0" @bind-Value="events_table_search_string" Placeholder="@Localizer["search"]" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium"></MudTextField>
@@ -588,9 +593,6 @@
                             var updatedEvents = await Events_Load(true);
                             events_mysql_data = updatedEvents;
                             StateHasChanged();
-                            
-                            // Show subtle notification
-                            Classes.Helper.Notifications.WebConsole.AutoRefresh(Snackbar, "Events", updatedEvents.Count);
                         }
                         catch (Exception ex)
                         {
@@ -611,6 +613,9 @@
         if (!await Permissions())
             return;
 
+        // Check for version updates first - redirect if force update required
+        await CheckForVersionUpdates();
+
         loading_overlay = true;
         StateHasChanged();
 
@@ -627,8 +632,69 @@
         loading_overlay = false;
         StateHasChanged();
 
+        // Starte automatisches Background-Loading für Events
+        if (events_has_more_data)
+            Start_Background_Loading();
+
         await ShowChangelogDialog();
+
+        // Show update warning dialog if version is outdated (> 7 days)
+        await ShowUpdateWarningDialog();
     }
+
+    #region Version Check
+
+    private async Task CheckForVersionUpdates()
+    {
+        try
+        {
+            var versionCheck = await Classes.Members_Portal.VersionCheck.CheckVersionAsync();
+
+            if (versionCheck != null && versionCheck.RequiresForceUpdate)
+            {
+                // Redirect to update-required page if update is older than 30 days
+                NavigationManager.NavigateTo("/update-required", true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("/dashboard -> CheckForVersionUpdates", "Error", ex.ToString());
+        }
+    }
+
+    private async Task ShowUpdateWarningDialog()
+    {
+        try
+        {
+            var versionCheck = await Classes.Members_Portal.VersionCheck.CheckVersionAsync();
+
+            if (versionCheck != null && versionCheck.RequiresUpdateWarning && !versionCheck.RequiresForceUpdate)
+            {
+                var options = new DialogOptions
+                {
+                    CloseButton = true,
+                    FullWidth = true,
+                    MaxWidth = MaxWidth.Medium,
+                    BackgroundClass = "dialog-blurring",
+                };
+
+                var parameters = new DialogParameters
+                {
+                    { "LatestVersion", versionCheck.LatestVersion },
+                    { "CurrentVersion", Application_Settings.db_version },
+                    { "DaysSinceRelease", versionCheck.DaysSinceRelease }
+                };
+
+                await DialogService.ShowAsync<Shared.UpdateAvailableDialog>("Update Available", parameters, options);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("/dashboard -> ShowUpdateWarningDialog", "Error", ex.ToString());
+        }
+    }
+
+    #endregion
 
     #region Charts
 
@@ -718,6 +784,14 @@
 
     public List<Events_Table> events_mysql_data; //Datasource for table
 
+    // Progressive loading variables
+    private int events_batch_size = 100;
+    private int events_current_offset = 0;
+    private bool events_has_more_data = true;
+    private bool events_is_loading_more = false;
+    private System.Threading.Timer _eventsBackgroundLoadTimer;
+    private bool _isBackgroundLoading = false;
+
     public class Events_Table
     {
         public string id { get; set; } = String.Empty;
@@ -790,35 +864,63 @@
 
     private async Task<List<Events_Table>> Events_Load(bool bypass_events_load_counter)
     {
-        if (events_load_counter != 0 && bypass_events_load_counter == false)
+        // Stoppe aktuelles Background-Loading
+        Stop_Background_Loading();
+        
+        // Reset offset and clear data for new search
+        events_current_offset = 0;
+        events_has_more_data = true;
+        events_is_loading_more = true; // Setze auf true beim Start
+        StateHasChanged();
+        
+        var result = await Events_Load_Batch(bypass_events_load_counter, true);
+        
+        // Starte neues Background-Loading
+        if (events_has_more_data)
+            Start_Background_Loading();
+        else
+        {
+            // Kein weiteres Laden nötig, deaktiviere Ladebalken
+            events_is_loading_more = false;
+            StateHasChanged();
+        }
+        
+        return result;
+    }
+
+    private async Task<List<Events_Table>> Events_Load_Batch(bool bypass_events_load_counter, bool reset_list = false)
+    {
+        if (events_load_counter != 0 && bypass_events_load_counter == false && !reset_list)
         {
             events_load_counter++;
-            return new List<Events_Table>();
+            return events_mysql_data ?? new List<Events_Table>();
         }
 
-        // Nur loading_overlay anzeigen, wenn es NICHT vom Timer kommt
-        if (!bypass_events_load_counter)
+        // Nur loading_overlay anzeigen beim ersten Laden
+        if (!bypass_events_load_counter && reset_list)
         {
             loading_overlay = true;
         }
 
-        string query = "SELECT * FROM events WHERE `read` = 0 AND date >= @start_date AND date <= @end_date ORDER BY date DESC;";
+
+        string query = "SELECT * FROM events WHERE `read` = 0 AND date >= @start_date AND date <= @end_date ORDER BY date DESC LIMIT @limit OFFSET @offset;";
 
         //Select severity
         if (device_information_events_severity_string == Localizer["low"])
-            query = "SELECT * FROM events WHERE `read` = 0 AND date >= @start_date AND date <= @end_date AND severity = 0 ORDER BY date DESC;";
+            query = "SELECT * FROM events WHERE `read` = 0 AND date >= @start_date AND date <= @end_date AND severity = 0 ORDER BY date DESC LIMIT @limit OFFSET @offset;";
         else if (device_information_events_severity_string == Localizer["moderate"])
-            query = "SELECT * FROM events WHERE `read` = 0 AND date >= @start_date AND date <= @end_date AND severity = 1 ORDER BY date DESC;";
+            query = "SELECT * FROM events WHERE `read` = 0 AND date >= @start_date AND date <= @end_date AND severity = 1 ORDER BY date DESC LIMIT @limit OFFSET @offset;";
         else if (device_information_events_severity_string == Localizer["high"])
-            query = "SELECT * FROM events WHERE `read` = 0 AND date >= @start_date AND date <= @end_date AND severity = 2 ORDER BY date DESC;";
+            query = "SELECT * FROM events WHERE `read` = 0 AND date >= @start_date AND date <= @end_date AND severity = 2 ORDER BY date DESC LIMIT @limit OFFSET @offset;";
         else if (device_information_events_severity_string == Localizer["critical"])
-            query = "SELECT * FROM events WHERE `read` = 0 AND date >= @start_date AND date <= @end_date AND severity = 3 ORDER BY date DESC;";
+            query = "SELECT * FROM events WHERE `read` = 0 AND date >= @start_date AND date <= @end_date AND severity = 3 ORDER BY date DESC LIMIT @limit OFFSET @offset;";
 
         MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
 
         try
         {
-            List<Events_Table> result = new List<Events_Table>();
+            List<Events_Table> result = reset_list ? new List<Events_Table>() : (events_mysql_data ?? new List<Events_Table>());
+            int loaded_count = 0;
 
             await conn.OpenAsync();
 
@@ -826,8 +928,10 @@
             command = new MySqlCommand(query, conn);
             command.Parameters.AddWithValue("@start_date", device_information_events_table_dateRange.Start.Value);
             command.Parameters.AddWithValue("@end_date", device_information_events_table_dateRange.End.Value);
+            command.Parameters.AddWithValue("@limit", events_batch_size);
+            command.Parameters.AddWithValue("@offset", events_current_offset);
 
-            Logging.Handler.Debug("/dashboard -> Events_Load", "MySQL_Prepared_Query", query); //Output prepared query
+            Logging.Handler.Debug("/dashboard -> Events_Load_Batch", "MySQL_Prepared_Query", query);
 
             using (DbDataReader reader = await command.ExecuteReaderAsync())
             {
@@ -835,16 +939,14 @@
                 {
                     while (await reader.ReadAsync())
                     {
-                        //Logging.Handler.Debug("Events", "MySQL_Result", reader["id"].ToString()); //Output the JSON
                         string device_id = reader["device_id"].ToString() ?? String.Empty;
                         string device_tenant_id = await Classes.MySQL.Handler.Get_TenantID_From_DeviceID(device_id);
 
                         // Check if the device's tenant ID is in the permissions list
                         if (!permissions_tenants_list.Contains(device_tenant_id))
-                            continue; // Skip this event if the tenant is not in the permissions list
+                            continue;
 
-
-                        Events_Table entity = new Events_Table //Create the entity
+                        Events_Table entity = new Events_Table
                             {
                                 id = reader["id"].ToString() ?? String.Empty,
                                 device_name = reader["device_name"].ToString() ?? String.Empty,
@@ -859,27 +961,102 @@
                                 type = reader["type"].ToString() ?? String.Empty,
                             };
 
-                        result.Add(entity); // Add the entity to the list
+                        result.Add(entity);
+                        loaded_count++;
                     }
                 }
             }
 
-            return result; //Return the list
+            // Check if there's more data to load
+            if (loaded_count < events_batch_size)
+                events_has_more_data = false;
+            else
+                events_current_offset += events_batch_size;
+
+            return result;
         }
         catch (Exception ex)
         {
-            Logging.Handler.Error("/dashboard -> Events_Load", "MySQL_Query", ex.Message);
-            return new List<Events_Table>(); // Return an empty list or handle the exception as needed
+            Logging.Handler.Error("/dashboard -> Events_Load_Batch", "MySQL_Query", ex.Message);
+            return events_mysql_data ?? new List<Events_Table>();
         }
         finally
         {
             await conn.CloseAsync();
-            // Nur loading_overlay deaktivieren, wenn es NICHT vom Timer kommt
-            if (!bypass_events_load_counter)
+            
+            // Nur loading_overlay deaktivieren beim ersten Laden
+            if (!bypass_events_load_counter && reset_list)
             {
                 loading_overlay = false;
             }
         }
+    }
+
+    private void Start_Background_Loading()
+    {
+        if (!events_has_more_data || _isBackgroundLoading)
+            return;
+
+        // Timer startet nach 2 Sekunden und lädt dann alle 3 Sekunden weitere Batches
+        _eventsBackgroundLoadTimer = new System.Threading.Timer(async _ => 
+        {
+            if (!events_has_more_data)
+            {
+                _eventsBackgroundLoadTimer?.Dispose();
+                
+                // Wenn keine weiteren Daten mehr zu laden sind, deaktiviere Ladebalken
+                await InvokeAsync(() =>
+                {
+                    events_is_loading_more = false;
+                    _isBackgroundLoading = false;
+                    StateHasChanged();
+                    Logging.Handler.Debug("/dashboard -> Background Loading", "Status", "All events loaded");
+                });
+                return;
+            }
+
+            if (_isBackgroundLoading)
+                return;
+
+            _isBackgroundLoading = true;
+
+            await InvokeAsync(async () =>
+            {
+                try
+                {
+                    var updatedEvents = await Events_Load_Batch(true, false);
+                    events_mysql_data = updatedEvents;
+                    StateHasChanged();
+
+                    // Wenn alle Daten geladen sind, Timer stoppen und Ladebalken ausblenden
+                    if (!events_has_more_data)
+                    {
+                        _eventsBackgroundLoadTimer?.Dispose();
+                        events_is_loading_more = false;
+                        StateHasChanged();
+                        Logging.Handler.Debug("/dashboard -> Background Loading", "Status", "All events loaded");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logging.Handler.Error("/dashboard -> Background Loading", "Error", ex.ToString());
+                    _eventsBackgroundLoadTimer?.Dispose();
+                    events_is_loading_more = false;
+                    StateHasChanged();
+                }
+                finally
+                {
+                    _isBackgroundLoading = false;
+                }
+            });
+        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(3));
+    }
+
+    private void Stop_Background_Loading()
+    {
+        _eventsBackgroundLoadTimer?.Dispose();
+        _isBackgroundLoading = false;
+        events_is_loading_more = false;
     }
 
     private bool event_details_dialog_open = false;
@@ -1140,14 +1317,12 @@
         {
             CloseButton = true,
             FullWidth = true,
-            MaxWidth = MaxWidth.Medium,
+            MaxWidth = MaxWidth.ExtraExtraLarge,
             BackgroundClass = "dialog-blurring",
+            FullScreen = true
         };
 
-        var result = await DialogService.Show<Shared.Changelog>(string.Empty, options).Result;
-
-        if (result.Canceled)
-            return;
+        await DialogService.Show<Shared.Changelog>(string.Empty, options).Result;
 
         // If the dialog was closed with OK, update the changelog_read status
         try
@@ -1167,8 +1342,6 @@
         {
             Logging.Handler.Error("/MainLayout -> Changelog_Dialog", "Error updating changelog_read status", ex.ToString());
         }
-
-        Logging.Handler.Debug("/MainLayout -> Changelog_Dialog", "Result", result.Data.ToString());
     }
 
     #endregion
@@ -1261,5 +1434,6 @@
     public void Dispose()
     {
         _eventsRefreshTimer?.Dispose();
+        _eventsBackgroundLoadTimer?.Dispose();
     }
 }

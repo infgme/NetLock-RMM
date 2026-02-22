@@ -842,7 +842,7 @@
             };
 
             var parameters = new DialogParameters();
-            var dialog = DialogService.Show<Pages.Collections.Scripts.Community_Scripts.Publish_Dialog>("Publish script", parameters, options);
+            var dialog = await DialogService.ShowAsync<Pages.Collections.Scripts.Community_Scripts.Publish_Dialog>("Publish script", parameters, options);
 
             var messageResult = await dialog.Result;
 			string contact = String.Empty;

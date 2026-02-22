@@ -651,7 +651,7 @@
 
         delete_ruleset_dialog_open = true;
 
-        var result = await this.DialogService.Show<Pages.Collections.Antivirus_Controlled_Folder_Access.Dialogs.Delete_Ruleset_Dialog>(string.Empty, parameters, options).Result;
+        var result = await (await DialogService.ShowAsync<Pages.Collections.Antivirus_Controlled_Folder_Access.Dialogs.Delete_Ruleset_Dialog>(string.Empty, parameters, options)).Result;
 
         delete_ruleset_dialog_open = false;
 

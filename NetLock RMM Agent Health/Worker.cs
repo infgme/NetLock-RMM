@@ -136,24 +136,39 @@ namespace NetLock_RMM_Agent_Health
                 }
                 else if (OperatingSystem.IsMacOS())
                 {
-                    string[] servicesToCheck = { "netlock-rmm-agent-comm", "netlock-rmm-agent-remote" };
+                    // Use the correct service labels from the plist files
+                    string[] servicesToCheck = { "com.netlock.rmm.agent.comm", "com.netlock.rmm.agent.remote" };
 
                     foreach (var serviceName in servicesToCheck)
                     {
-                        string serviceCommand = $"launchctl list | grep -w {serviceName}";
+                        string serviceCommand = $"launchctl list | grep {serviceName}";
 
-                        // Execute bash script and save the output
-                        string output = Bash.Execute_Script("Service Health Check", false, serviceCommand);
+                        // Execute zsh script (not bash) and save the output
+                        string output = MacOS.Helper.Zsh.Execute_Script("Service Health Check", false, serviceCommand);
+
+                        Logging.Debug($"Check_Health ({serviceName})", "Service status output", output);
 
                         if (!string.IsNullOrEmpty(output))
                         {
-                            // Check if the service is running by inspecting the output
-                            if (output.Contains("PID") || output.Contains("running", StringComparison.OrdinalIgnoreCase))
+                            // Regex to extract only the line for the specific service
+                            string pattern = $@"^\S+\s+\S+\s+{Regex.Escape(serviceName)}$";
+                            var match = Regex.Match(output, pattern, RegexOptions.Multiline);
+
+                            bool isServiceRunning = false;
+
+                            if (match.Success)
+                            {
+                                // Extract the PID value or the "-" at the beginning of the line
+                                string[] parts = match.Value.Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                                isServiceRunning = parts.Length > 0 && parts[0] != "-"; // "-" means the service is not running
+                            }
+
+                            if (isServiceRunning)
                             {
                                 Logging.Debug($"Check_Health ({serviceName})", "Running", "Installed & running.");
-                                if (serviceName == "netlock-rmm-agent-comm")
+                                if (serviceName == "com.netlock.rmm.agent.comm")
                                     comm_agent_healthy = true;
-                                else if (serviceName == "netlock-rmm-agent-remote")
+                                else if (serviceName == "com.netlock.rmm.agent.remote")
                                     remote_agent_healthy = true;
                             }
                             else
@@ -264,23 +279,23 @@ namespace NetLock_RMM_Agent_Health
                         if (!comm_agent_healthy)
                         {
                             // Start the service
-                            MacOS.Helper.Zsh.Execute_Script("Service Start", false, "launchctl start netlock-rmm-agent-comm");
+                            MacOS.Helper.Zsh.Execute_Script("Service Start", false, "launchctl start com.netlock.rmm.agent.comm");
 
-                            string output = MacOS.Helper.Zsh.Execute_Script("Service Sensor", false, $"launchctl list | grep netlock-rmm-agent-comm");
+                            string output = MacOS.Helper.Zsh.Execute_Script("Service Sensor", false, $"launchctl list | grep com.netlock.rmm.agent.comm");
 
                             Logging.Debug("Check_Health", "Service status output", output);
 
                             // Regex to extract only the line for the specific service
-                            string pattern = $@"^\S+\s+\S+\s+netlock-rmm-agent-comm$";
+                            string pattern = $@"^\S+\s+\S+\s+com\.netlock\.rmm\.agent\.comm$";
                             var match = Regex.Match(output, pattern, RegexOptions.Multiline);
 
                             bool isServiceRunning = false;
 
                             if (match.Success)
                             {
-                                // Extrahiere den PID-Wert oder das "-" am Anfang der Zeile
-                                string[] parts = match.Value.Split(new[] { '\t' }, StringSplitOptions.RemoveEmptyEntries);
-                                isServiceRunning = parts[0] != "-"; // "-" means the service is not running
+                                // Extract the PID value or the "-" at the beginning of the line
+                                string[] parts = match.Value.Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                                isServiceRunning = parts.Length > 0 && parts[0] != "-"; // "-" means the service is not running
                             }
 
                             if (isServiceRunning)
@@ -292,14 +307,14 @@ namespace NetLock_RMM_Agent_Health
                         if (!remote_agent_healthy)
                         {
                             // Start the service
-                            MacOS.Helper.Zsh.Execute_Script("Service Start", false, "launchctl start netlock-rmm-agent-remote");
+                            MacOS.Helper.Zsh.Execute_Script("Service Start", false, "launchctl start com.netlock.rmm.agent.remote");
                          
-                            string output = MacOS.Helper.Zsh.Execute_Script("Service Sensor", false, $"launchctl list | grep netlock-rmm-agent-remote");
+                            string output = MacOS.Helper.Zsh.Execute_Script("Service Sensor", false, $"launchctl list | grep com.netlock.rmm.agent.remote");
 
                             Logging.Debug("Check_Health", "Service status output", output);
 
                             // Regex to extract only the line for the specific service
-                            string pattern = $@"^\S+\s+\S+\s+netlock-rmm-agent-remote$";
+                            string pattern = $@"^\S+\s+\S+\s+com\.netlock\.rmm\.agent\.remote$";
                             var match = Regex.Match(output, pattern, RegexOptions.Multiline);
                             
                             bool isServiceRunning = false;
@@ -307,8 +322,8 @@ namespace NetLock_RMM_Agent_Health
                             if (match.Success)
                             {
                                 // Extract the PID value or the `-` at the beginning of the line
-                                string[] parts = match.Value.Split(new[] { '\t' }, StringSplitOptions.RemoveEmptyEntries);
-                                isServiceRunning = parts[0] != "-"; // "-" means the service is not running
+                                string[] parts = match.Value.Split(new[] { '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                                isServiceRunning = parts.Length > 0 && parts[0] != "-"; // "-" means the service is not running
                             }
 
                             if (isServiceRunning)

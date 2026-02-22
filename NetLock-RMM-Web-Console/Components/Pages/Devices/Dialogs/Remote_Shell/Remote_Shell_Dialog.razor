@@ -132,7 +132,8 @@
     [Parameter] public string device_name { get; set; }
     [Parameter] public string tenant_guid { get; set; }
     [Parameter] public string location_guid { get; set; }
-
+    [Parameter] public string access_key { get; set; }
+    
     private string netlock_username = String.Empty;
     private string token = String.Empty;
     private bool loading_overlay = false;
@@ -308,10 +309,7 @@
 
     public class Remote_Target_Device
     {
-        public string device_id { get; set; }
-        public string device_name { get; set; }
-        public string location_guid { get; set; }
-        public string tenant_guid { get; set; }
+        public string access_key { get; set; }
     }
 
     public class Remote_Command
@@ -432,10 +430,7 @@
 
             var targetDevice = new Remote_Target_Device
                 {
-                    device_id = device_id,
-                    device_name = device_name,
-                    tenant_guid = tenant_guid,
-                    location_guid = location_guid
+                    access_key = access_key
                 };
 
             var command = new Remote_Command
@@ -539,7 +534,7 @@
 
             community_scripts_dialog_open = true;
 
-            var result = await this.DialogService.Show<Pages.Collections.Scripts.Community_Scripts.Community_Scripts_Dialog>(string.Empty, parameters, options).Result;
+            var result = await (await DialogService.ShowAsync<Pages.Collections.Scripts.Community_Scripts.Community_Scripts_Dialog>(string.Empty, parameters, options)).Result;
 
             // Handle the result if needed
             if (!result.Canceled)

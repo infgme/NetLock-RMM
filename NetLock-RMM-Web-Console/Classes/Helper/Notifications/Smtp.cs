@@ -15,6 +15,9 @@ namespace NetLock_RMM_Web_Console.Classes.Helper.Notifications
             public string server { get; set; }
             public string port { get; set; }
             public bool ssl { get; set; }
+            public string from { get; set; }
+            public string fromAddress { get; set; }
+            public string toAddress { get; set; }
         }
 
         public static async Task<string> Send_Mail(string recipient, string subject, string body)
@@ -50,9 +53,24 @@ namespace NetLock_RMM_Web_Console.Classes.Helper.Notifications
             {
                 await conn.CloseAsync();
             }
+
+            // Validate smtpSettings
+            if (smtpSettings == null)
+            {
+                string error = "SMTP settings could not be loaded from database";
+                Logging.Handler.Error("Classes.Helper.Smtp", "Send_Mail", error);
+                return error;
+            }
             
             try
             {
+                // Prioritize 'fromAddress' field, then 'from' field, finally fallback to username
+                string fromAddress = !string.IsNullOrEmpty(smtpSettings.fromAddress) 
+                    ? smtpSettings.fromAddress 
+                    : (!string.IsNullOrEmpty(smtpSettings.from) 
+                        ? smtpSettings.from 
+                        : smtpSettings.username);
+
                 using (SmtpClient smtpClient = new SmtpClient(smtpSettings.server, Convert.ToInt32(smtpSettings.port)))
                 {
                     smtpClient.Credentials = new NetworkCredential(smtpSettings.username, smtpSettings.password);
@@ -60,7 +78,7 @@ namespace NetLock_RMM_Web_Console.Classes.Helper.Notifications
 
                     using (MailMessage mailMessage = new MailMessage())
                     {
-                        mailMessage.From = new MailAddress(smtpSettings.username, "Alerts | NetLock");
+                        mailMessage.From = new MailAddress(fromAddress, "Alerts | NetLock");
                         mailMessage.To.Add(recipient);
                         mailMessage.Subject = subject;
                         mailMessage.Body = body;
@@ -90,9 +108,11 @@ namespace NetLock_RMM_Web_Console.Classes.Helper.Notifications
         {
             try
             {
-                from = from ?? username; // fallback to username if from is null
-
-                toAddress = toAddress ?? username; // fallback to username if toAddress is null
+                // Use 'from' field if available, otherwise fallback to username
+                string fromAddress = string.IsNullOrEmpty(from) ? username : from;
+                
+                // Use toAddress if provided, otherwise fallback to username
+                string recipient = string.IsNullOrEmpty(toAddress) ? username : toAddress;
 
                 using (SmtpClient smtpClient = new SmtpClient(server, port))
                 {
@@ -106,8 +126,8 @@ namespace NetLock_RMM_Web_Console.Classes.Helper.Notifications
                     using (MailMessage mailMessage = new MailMessage())
                     {
                         // Set sender, recipient, subject and message text
-                        mailMessage.From = new MailAddress(from, "Alerts | NetLock");
-                        mailMessage.To.Add(toAddress); // Add the recipient e-mail address here
+                        mailMessage.From = new MailAddress(fromAddress, "Alerts | NetLock");
+                        mailMessage.To.Add(recipient); // Add the recipient e-mail address here
                         mailMessage.Subject = "NetLock - Test Alert";
                         mailMessage.Body = "Test successful.";
 

@@ -364,8 +364,8 @@ namespace NetLock_RMM_Agent_Installer
             Helper.IO.Delete_Directory(Application_Paths.program_files_comm_agent_dir);
             Logging.Handler.Debug("Main", "Deleting directories.", Application_Paths.program_files_remote_agent_dir);
             Helper.IO.Delete_Directory(Application_Paths.program_files_remote_agent_dir);
-            Logging.Handler.Debug("Main", "Deleting directories.", Application_Paths.program_files_user_agent_dir);
-            Helper.IO.Delete_Directory(Application_Paths.program_files_user_agent_dir);
+            Logging.Handler.Debug("Main", "Deleting directories.", Application_Paths.program_files_user_process_dir);
+            Helper.IO.Delete_Directory(Application_Paths.program_files_user_process_dir);
             Logging.Handler.Debug("Main", "Deleting directories.", Application_Paths.program_data_comm_agent_dir);
             Helper.IO.Delete_Directory(Application_Paths.program_data_comm_agent_dir);
             Logging.Handler.Debug("Main", "Deleting directories.", Application_Paths.program_data_remote_agent_dir);

@@ -8,6 +8,7 @@
 @inject ISnackbar Snackbar
 @inject IStringLocalizer<Pages.Tenants.Dialogs.Group_Management.Delete_Group_Dialog> Localizer
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NetLock_RMM_Web_Console.Classes.Helper.TenantUpdateService TenantUpdateService
 
 <AuthorizeView>
     <NotAuthorized>
@@ -71,7 +72,7 @@
 
             string execute_query = @"
                 DELETE FROM `groups` WHERE id = @group_id AND location_id = @location_id AND tenant_id = @tenant_id;
-                UPDATE devices SET group_name = 'Nicht zugewiesen' WHERE group_id = @group_id AND location_id = @location_id AND tenant_id = @tenant_id;";
+                UPDATE devices SET group_name = '-' WHERE group_id = @group_id AND location_id = @location_id AND tenant_id = @tenant_id;";
 
             MySqlCommand cmd = new MySqlCommand(execute_query, conn);
             cmd.Parameters.AddWithValue("@tenant_id", tenant_id);
@@ -95,8 +96,10 @@
         {
             this.Snackbar.Add(Localizer["deleted"], Severity.Success);
 
-            Thread.Sleep(1000);
-            Redirect("/location_settings", true);
+            // Notify NavMenu to reload tenant data
+            TenantUpdateService.NotifyTenantUpdated();
+            
+            this.MudDialog.Close(DialogResult.Ok("success"));
         }
         else
         {
@@ -110,8 +113,5 @@
     {
         NavigationManager.NavigateTo("/");
         NavigationManager.NavigateTo(path);
-
-        if (refresh)
-            NavigationManager.Refresh(true);
     }
 }

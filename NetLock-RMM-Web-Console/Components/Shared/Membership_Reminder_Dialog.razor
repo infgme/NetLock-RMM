@@ -1,4 +1,4 @@
-﻿@using MySqlConnector;
+@using MySqlConnector;
 @using System.Data.Common;
 @using System.Text.Json;
 @using System.Text.Json.Nodes;
@@ -75,62 +75,7 @@
         }
     }
 
-    private async Task<bool> HasMinimumTier()
-    {
-        try
-        {
-            // Check if license info file exists
-            if (!File.Exists(Application_Paths.internal_license_info_json_path))
-                return false;
-
-            // Get license info
-            var (validUntil, packageName, licensesMax, licensesHardLimit, codeSigned) = 
-                await Classes.Members_Portal.Handler.Get_License_Info();
-
-            // Check if license is valid
-            bool isValid = await Classes.Members_Portal.Handler.Check_License_Valid_Status(false);
-            
-            if (!isValid)
-                return false;
-
-            // Check if package name indicates Tier 1 or higher
-            // Package names: "Open Source", "Tier 1", "Tier 2", etc.
-            if (string.IsNullOrEmpty(packageName) || packageName.Equals("Open Source", StringComparison.OrdinalIgnoreCase) || 
-                packageName.Equals("Invalid", StringComparison.OrdinalIgnoreCase) || 
-                packageName.Equals("Error", StringComparison.OrdinalIgnoreCase) ||
-                packageName.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            // If it's a Tier package, extract the tier number
-            if (packageName.StartsWith("Tier ", StringComparison.OrdinalIgnoreCase))
-            {
-                var tierNumberStr = packageName.Substring(5).Trim();
-                if (int.TryParse(tierNumberStr, out int tierNumber))
-                {
-                    return tierNumber >= 1;
-                }
-            }
-
-            // For cloud packages (Starter, Professional, Advanced, Enterprise), they all have premium features
-            if (packageName.Equals("Starter", StringComparison.OrdinalIgnoreCase) ||
-                packageName.Equals("Professional", StringComparison.OrdinalIgnoreCase) ||
-                packageName.Equals("Advanced", StringComparison.OrdinalIgnoreCase) ||
-                packageName.Equals("Enterprise", StringComparison.OrdinalIgnoreCase) ||
-                packageName.Equals("Custom", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            return false;
-        }
-        catch (Exception ex)
-        {
-            Logging.Handler.Error("Membership_Reminder_Dialog -> HasMinimumTier", "Error", ex.ToString());
-            return false;
-        }
-    }
+    //OSSCH_START 48fac65f-9e34-4943-bffa-4f5a82907df2 //OSSCH_END
 
     private void OK()
     {

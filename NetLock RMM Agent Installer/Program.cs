@@ -26,6 +26,7 @@ namespace NetLock_RMM_Agent_Installer
             public string update_servers { get; set; } = String.Empty;
             public string trust_servers { get; set; } = String.Empty;
             public string file_servers { get; set; } = String.Empty;
+            public string relay_servers { get; set; } = String.Empty;
             public string tenant_guid { get; set; } = String.Empty;
             public string location_guid { get; set; } = String.Empty;
             public string language { get; set; } = String.Empty;
@@ -204,8 +205,16 @@ namespace NetLock_RMM_Agent_Installer
 
                 if (arguments)
                 {
-                    // Extract server_config.json
-                    server_config_json_new = File.ReadAllText(arg2);
+                    // Extract server_config.json (attempt decrypting first for new versions, fallback to unencrypted for older ones)
+                    try
+                    {
+                        server_config_json_new = File.ReadAllText(arg2);
+                        server_config_json_new = Helper.Encryption.String_Encryption.Decrypt(server_config_json_new, Application_Settings.NetLock_Local_Encryption_Key);
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine("Config decryption failed. Falling back to legacy mode. Error: " + e);
+                    }
                 }
 
                 if (!arguments)
@@ -418,15 +427,12 @@ namespace NetLock_RMM_Agent_Installer
                if (!Directory.Exists(Application_Paths.program_files_tray_icon_dir))
                     Directory.CreateDirectory(Application_Paths.program_files_tray_icon_dir);
                 
-                // Create program data & files dir (user process/agent)
-                if (OperatingSystem.IsWindows())
-                {
-                    if (!Directory.Exists(Application_Paths.program_files_user_agent_dir))
-                        Directory.CreateDirectory(Application_Paths.program_files_user_agent_dir);
+                // Create program files & files dir (user process/agent)
+                if (!Directory.Exists(Application_Paths.program_files_user_process_dir))
+                    Directory.CreateDirectory(Application_Paths.program_files_user_process_dir);
 
-                    if (!Directory.Exists(Application_Paths.program_data_user_agent_dir))
-                        Directory.CreateDirectory(Application_Paths.program_data_user_agent_dir);
-                }
+                if (!Directory.Exists(Application_Paths.program_data_user_process_dir))
+                    Directory.CreateDirectory(Application_Paths.program_data_user_process_dir);
 
                 // Extract agent bundle package to temp directory
                 Logging.Handler.Debug("Main", "Extracting agent bundle package", "");
@@ -452,6 +458,18 @@ namespace NetLock_RMM_Agent_Installer
                     // Read old server_config.json
                     string server_config_json_old = File.ReadAllText(Application_Paths.program_data_health_agent_server_config);
                     Logging.Handler.Debug("Main", "Server_Config_Handler.Load (server_config_json_old)", server_config_json_old);
+                    
+                    // Try Decrypting old config
+                    try
+                    {
+                        server_config_json_old = Helper.Encryption.String_Encryption.Decrypt(server_config_json_old, Application_Settings.NetLock_Local_Encryption_Key);
+                    }
+                    catch (Exception e)
+                    {
+                        Logging.Handler.Error("Main", "Old config decryption failed. Falling back to legacy mode.", e.ToString());
+                        Console.WriteLine("[" + DateTime.Now + "] - [Main] -> Old config decryption failed. Falling back to legacy mode. Error: " + e);
+                    }
+                    
                     Server_Config server_config_old = JsonSerializer.Deserialize<Server_Config>(server_config_json_old);
 
                     //  Create the JSON object
@@ -464,6 +482,7 @@ namespace NetLock_RMM_Agent_Installer
                         update_servers = server_config_old.update_servers,
                         trust_servers = server_config_old.trust_servers,
                         file_servers = server_config_old.file_servers,
+                        relay_servers = server_config_old.relay_servers,
                         tenant_guid = server_config_old.tenant_guid,
                         location_guid = server_config_old.location_guid,
                         language = server_config_old.language,
@@ -499,12 +518,9 @@ namespace NetLock_RMM_Agent_Installer
                 ZipFile.ExtractToDirectory(Path.Combine(agent_bundle_temp_dir, "tray.icon.zip"), Application_Paths.program_files_tray_icon_dir, true);
                 
                 // Extract user process from bundle
-                if (OperatingSystem.IsWindows())
-                {
-                    Logging.Handler.Debug("Main", "Extracting user process from bundle", "");
-                    Console.WriteLine("[" + DateTime.Now + "] - [Main] -> Extracting user process from bundle.");
-                    ZipFile.ExtractToDirectory(Path.Combine(agent_bundle_temp_dir, "user.process.zip"), Application_Paths.program_files_user_agent_dir, true);
-                }
+                Logging.Handler.Debug("Main", "Extracting user process from bundle", "");
+                Console.WriteLine("[" + DateTime.Now + "] - [Main] -> Extracting user process from bundle.");
+                ZipFile.ExtractToDirectory(Path.Combine(agent_bundle_temp_dir, "user.process.zip"), Application_Paths.program_files_user_process_dir, true);
 
                 // Copy server config json to program data dir
                 if (arg1 == "clean" && arguments)

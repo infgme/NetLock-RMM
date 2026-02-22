@@ -1,0 +1,1390 @@
+@using MySqlConnector
+@using System.Data.Common
+@using System.Text.Json
+@using System.Security.Claims
+
+@implements IDisposable
+
+@inject NavigationManager NavigationManager
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<style>
+    .relay-session-card {
+        margin-bottom: 10px;
+    }
+    
+    .connection-info {
+        font-family: monospace;
+        background-color: #e3f2fd;
+        color: #0d47a1;
+        padding: 12px;
+        border-radius: 4px;
+        margin: 10px 0;
+        border: 1px solid #90caf9;
+    }
+    
+    .mud-theme-dark .connection-info {
+        background-color: #1e3a5f;
+        color: #90caf9;
+        border: 1px solid #1976d2;
+    }
+    
+    .connection-info .connection-label {
+        font-weight: 600;
+        margin-right: 8px;
+    }
+    
+    .device-chip {
+        margin-right: 8px;
+    }
+</style>
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h5">
+            <MudIcon Icon="@Icons.Material.Filled.Hub" Class="mr-2" />
+            Relay Server Manager
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        
+        @if (!string.IsNullOrEmpty(error_message))
+        {
+            <MudAlert Class="mb-3" Severity="Severity.Error" Icon="@Icons.Material.Filled.Error">@error_message</MudAlert>
+        }
+
+        @if (permissions_relay_server_manage && permissions_relay_server_add)
+        {
+             <!-- Create New Relay Session - Expandable -->
+            <MudExpansionPanels Class="mb-3">
+                <MudExpansionPanel>
+                    <TitleContent>
+                        <div class="d-flex align-center">
+                            <MudIcon Icon="@Icons.Material.Filled.Add" Class="mr-2" />
+                            <MudText Typo="Typo.h6">Create New Relay Session</MudText>
+                        </div>
+                    </TitleContent>
+                    <ChildContent>
+                        <!-- Tenant Selection -->
+                        <MudSelect T="string" 
+                                   @bind-Value="selected_tenant" 
+                                   Label="Tenant" 
+                                   Variant="Variant.Filled"
+                                   Required="true"
+                                   Adornment="Adornment.Start"
+                                   AdornmentIcon="@Icons.Material.Filled.Business"
+                                   Class="mb-3">
+                            @foreach (var tenant in tenants_list)
+                            {
+                                <MudSelectItem Value="@tenant" />
+                            }
+                        </MudSelect>
+
+                        <!-- Location Selection -->
+                        <MudSelect T="string" 
+                                   @bind-Value="selected_location" 
+                                   Label="Location" 
+                                   Variant="Variant.Filled"
+                                   Required="true"
+                                   Disabled="@(String.IsNullOrEmpty(selected_tenant))"
+                                   Adornment="Adornment.Start"
+                                   AdornmentIcon="@Icons.Material.Filled.LocationOn"
+                                   Class="mb-3">
+                            @foreach (var location in locations_list)
+                            {
+                                <MudSelectItem Value="@location" />
+                            }
+                        </MudSelect>
+
+                        <!-- Group Selection (Optional) -->
+                        <MudSelect T="string" 
+                                   @bind-Value="selected_group" 
+                                   Label="Group (optional)" 
+                                   Variant="Variant.Filled"
+                                   Disabled="@(String.IsNullOrEmpty(selected_location))"
+                                   Clearable="true"
+                                   Adornment="Adornment.Start"
+                                   AdornmentIcon="@Icons.Material.Filled.Group"
+                                   Class="mb-3">
+                            <MudSelectItem Value="@("")">-</MudSelectItem>
+                            @foreach (var group in groups_list)
+                            {
+                                <MudSelectItem Value="@group" />
+                            }
+                        </MudSelect>
+                        
+                        <!-- Device Autocomplete (enabled after location selection) -->
+                        <MudAutocomplete T="DeviceInfo" 
+                                         @bind-Value="selected_device" 
+                                         Label="Target Device" 
+                                         SearchFunc="@SearchDevices"
+                                         ToStringFunc="@(device => device?.device_name ?? "")"
+                                         Variant="Variant.Filled"
+                                         Required="true"
+                                         ShowProgressIndicator="true"
+                                         Disabled="@(String.IsNullOrEmpty(selected_location))"
+                                         Class="mb-3"
+                                         Adornment="Adornment.Start"
+                                         AdornmentIcon="@Icons.Material.Filled.Computer">
+                            <ItemTemplate Context="device">
+                                <MudText Typo="Typo.body1">@device.device_name</MudText>
+                                <MudText Typo="Typo.body2" Style="font-size: 0.75rem; color: gray;">
+                                    @device.tenant_name / @device.location_name @(!String.IsNullOrEmpty(device.group_name) ? $"/ {device.group_name}" : "")
+                                </MudText>
+                            </ItemTemplate>
+                        </MudAutocomplete>
+                        
+                        <!-- Port Selection with Common Ports -->
+                        <MudSelect T="int"
+                                   @bind-Value="target_port"
+                                   Label="Target Port"
+                                   Variant="Variant.Filled"
+                                   Required="true"
+                                   Adornment="Adornment.Start"
+                                   AdornmentIcon="@Icons.Material.Filled.Cable"
+                                   Class="mb-2">
+                            <MudSelectItem Value="3389">3389 - RDP (Remote Desktop)</MudSelectItem>
+                            <MudSelectItem Value="22">22 - SSH (Secure Shell)</MudSelectItem>
+                            <MudSelectItem Value="80">80 - HTTP (Web Server)</MudSelectItem>
+                            <MudSelectItem Value="443">443 - HTTPS (Secure Web)</MudSelectItem>
+                            <MudSelectItem Value="5900">5900 - VNC (Virtual Network Computing)</MudSelectItem>
+                            <MudSelectItem Value="3306">3306 - MySQL/MariaDB</MudSelectItem>
+                            <MudSelectItem Value="5432">5432 - PostgreSQL</MudSelectItem>
+                            <MudSelectItem Value="1433">1433 - MS SQL Server</MudSelectItem>
+                            <MudSelectItem Value="27017">27017 - MongoDB</MudSelectItem>
+                            <MudSelectItem Value="6379">6379 - Redis</MudSelectItem>
+                            <MudSelectItem Value="21">21 - FTP (File Transfer)</MudSelectItem>
+                            <MudSelectItem Value="23">23 - Telnet</MudSelectItem>
+                            <MudSelectItem Value="25">25 - SMTP (Email)</MudSelectItem>
+                            <MudSelectItem Value="445">445 - SMB (Windows File Share)</MudSelectItem>
+                            <MudSelectItem Value="139">139 - NetBIOS</MudSelectItem>
+                            <MudSelectItem Value="8080">8080 - HTTP Alternate</MudSelectItem>
+                            <MudSelectItem Value="8443">8443 - HTTPS Alternate</MudSelectItem>
+                            <MudSelectItem Value="9090">9090 - Management Console</MudSelectItem>
+                            <MudSelectItem Value="10000">10000 - Webmin</MudSelectItem>
+                        </MudSelect>
+                        
+                        <MudNumericField 
+                            @bind-Value="target_port" 
+                            Label="Custom Port (Optional)" 
+                            Variant="Variant.Outlined" 
+                            Min="1" 
+                            Max="65535"
+                            HelperText="Enter a custom port if not listed above"
+                            Adornment="Adornment.Start"
+                            AdornmentIcon="@Icons.Material.Filled.Edit"
+                            Class="mb-3" />
+                        
+                        <MudSelect 
+                            @bind-Value="protocol" 
+                            Label="Protocol" 
+                            Variant="Variant.Filled"
+                            Adornment="Adornment.Start"
+                            AdornmentIcon="@Icons.Material.Filled.Router"
+                            Class="mb-3">
+                            <MudSelectItem Value="@("TCP")">TCP</MudSelectItem>
+                        </MudSelect>
+                        
+                        <MudTextField 
+                            @bind-Value="description" 
+                            Label="Description (optional)" 
+                            Variant="Variant.Filled"
+                            Lines="2"
+                            Adornment="Adornment.Start"
+                            AdornmentIcon="@Icons.Material.Filled.Description"
+                            Class="mb-3" />
+                        
+                        <MudCheckBox 
+                            @bind-Value="is_persistent" 
+                            Label="Persistent (Auto-restore on server restart)"
+                            Color="Color.Primary"
+                            Class="mb-2">
+                            <MudText Typo="Typo.caption" Style="color: gray; margin-left: 32px;">
+                                Persistent sessions are stored in database and automatically restored when the relay server restarts.
+                            </MudText>
+                        </MudCheckBox>
+                        
+                        <MudButton 
+                            OnClick="@Create_Relay_Session" 
+                            Variant="Variant.Filled" 
+                            Color="Color.Primary" 
+                            StartIcon="@Icons.Material.Filled.PlayArrow"
+                            Disabled="@(creating_session || selected_device == null)"
+                            FullWidth="true">
+                            @if (creating_session)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                                <span class="ml-2">Creating...</span>
+                            }
+                            else
+                            {
+                                <span>Create Relay Session</span>
+                            }
+                        </MudButton>
+                    </ChildContent>
+                </MudExpansionPanel>
+            </MudExpansionPanels>   
+        }
+
+        <!-- Active Sessions Overview -->
+        <MudPaper Class="pa-3" Elevation="3">
+            <div class="d-flex justify-space-between align-center mb-3">
+                <MudText Typo="Typo.h6">
+                    <MudIcon Icon="@Icons.Material.Filled.ListAlt" Class="mr-2" Size="Size.Small" />
+                    Active Relay Sessions
+                </MudText>
+                <MudChip T="string" Size="Size.Small" Color="Color.Info">@active_sessions.Count Session(s)</MudChip>
+            </div>
+            
+            @if (loading_sessions)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2" />
+            }
+            
+            @if (active_sessions.Count == 0 && !loading_sessions)
+            {
+                <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
+                    No active relay sessions. Create a new session to get started.
+                </MudAlert>
+            }
+            else
+            {
+                <MudTable Items="@active_sessions" Hover="true" Dense="true" Striped="true">
+                    <HeaderContent>
+                        <MudTh>Device</MudTh>
+                        <MudTh>Target Port</MudTh>
+                        <MudTh>Protocol</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Connections</MudTh>
+                        <MudTh>Persistent</MudTh>
+                        <MudTh>Enabled</MudTh>
+                        <MudTh>Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Device">
+                            <div class="d-flex align-center">
+                                <MudIcon Icon="@Icons.Material.Filled.Computer" Size="Size.Small" Class="mr-2" />
+                                <div>
+                                    <MudText Typo="Typo.body2" Style="font-weight: 600;">@context.device_name</MudText>
+                                    <MudText Typo="Typo.caption" Style="color: gray;">@context.tenant_name</MudText>
+                                </div>
+                            </div>
+                        </MudTd>
+                        <MudTd DataLabel="Target Port">
+                            <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Input">@context.target_port</MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Protocol">
+                            <MudChip T="string" Size="Size.Small">@context.protocol</MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Status">
+                            @switch (context.display_status)
+                            {
+                                case "Active":
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">Active</MudChip>
+                                    break;
+                                case "Ready to connect":
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@Icons.Material.Filled.CloudQueue">Ready to connect</MudChip>
+                                    break;
+                                case "Device offline":
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Filled.CloudOff">Device offline</MudChip>
+                                    break;
+                                case "Disconnecting":
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Default" Icon="@Icons.Material.Filled.PauseCircle">Disconnecting</MudChip>
+                                    break;
+                                case "Disabled":
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Error" Icon="@Icons.Material.Filled.Cancel">Disabled</MudChip>
+                                    break;
+                                case "Inactive":
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Default" Icon="@Icons.Material.Filled.RemoveCircle">Inactive</MudChip>
+                                    break;
+                                default:
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Default">@context.display_status</MudChip>
+                                    break;
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Connections">
+                            <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Cable">@context.active_connections</MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Persistent">
+                            @if (context.is_persistent)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@Icons.Material.Filled.Save">Yes</MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.DoNotDisturb">Temp</MudChip>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Enabled">
+                            @if (context.is_persistent)
+                            {
+                                <MudSwitch 
+                                    T="bool" 
+                                    Value="@context.enabled" 
+                                    ValueChanged="@(async (bool value) => await Toggle_Session_Enabled(context, value))"
+                                    Color="Color.Success" 
+                                    Size="Size.Small"
+                                    Disabled="!permissions_relay_server_edit"/>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.caption" Style="color: gray;">N/A</MudText>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Actions">
+                            <MudTooltip Text="Copy connection address">
+                                <MudIconButton
+                                    Icon="@Icons.Material.Filled.ContentCopy"
+                                    Size="Size.Small"
+                                    Color="Color.Info"
+                                    OnClick="() => Copy_Connection_String(context)" />
+                            </MudTooltip>
+                            @if (permissions_relay_server_delete)
+                            {
+                                <MudTooltip Text="Close session">
+                                    <MudIconButton 
+                                        Icon="@Icons.Material.Filled.Close" 
+                                        Size="Size.Small" 
+                                        Color="Color.Error"
+                                        OnClick="() => Close_Relay_Session(context.session_id)" 
+                                        Disabled="!permissions_relay_server_delete"/>
+                                </MudTooltip>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudPaper>
+
+    </DialogContent>
+    <DialogActions>
+        <div class="d-flex justify-space-between" style="width: 100%;">
+            <div>
+                @if (permissions_relay_server_manage)
+                {
+                    <MudButton 
+                        OnClick="@OpenRelayIdentitiesOverview" 
+                        Variant="Variant.Filled" 
+                        Color="Color.Primary" 
+                        Size="Size.Small"
+                        StartIcon="@Icons.Material.Filled.Key">
+                        Manage API Keys
+                    </MudButton>
+                }
+            </div>
+            <div>
+                <MudButton OnClick="@Refresh_Sessions" Variant="Variant.Text" Color="Color.Default" Size="Size.Small" StartIcon="@Icons.Material.Filled.Refresh">Refresh</MudButton>
+                <MudButton OnClick="Cancel" Variant="Variant.Filled" Color="Color.Default" Size="Size.Small">Close</MudButton>
+            </div>
+        </div>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    
+    #region Permissions System
+
+    private string permissions_json = String.Empty;
+
+    private bool permissions_relay_server_enabled = false;
+    private bool permissions_relay_server_manage = false;
+    private bool permissions_relay_server_add = false;
+    private bool permissions_relay_server_edit = false;
+    private bool permissions_relay_server_delete = false;
+
+    // Auth:
+    private async Task<bool> Permissions()
+    {
+        try
+        {
+            bool logout = false;
+
+            // Get the current user from the authentication state
+            var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+
+            // Check if user is authenticated
+            if (user?.Identity is not { IsAuthenticated: true })
+                logout = true;
+
+            string netlock_username = user.FindFirst(ClaimTypes.Email)?.Value;
+
+            permissions_relay_server_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "relay_server_enabled");
+            permissions_relay_server_manage = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "relay_server_manage");
+            permissions_relay_server_add = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "relay_server_add");
+            permissions_relay_server_edit = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "relay_server_edit");
+            permissions_relay_server_delete = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "relay_server_delete");
+
+            if (!permissions_relay_server_enabled)
+                logout = true;
+
+            if (logout) // Redirect to the login page
+            {
+                NavigationManager.NavigateTo("/logout", true);
+                return false;
+            }
+
+            // All fine? Nice.
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("/dashboard -> Permissions", "Error", ex.ToString());
+            return false;
+        }
+    }
+
+    #endregion
+    
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; }
+
+    private string netlock_username = String.Empty;
+
+    // Relay Identities
+    private List<RelayIdentity> relayIdentities = new List<RelayIdentity>();
+    private bool loadingRelayIdentities = false;
+    private int currentAdminId = 0;
+    
+    private string relay_server_address = String.Empty;
+    private string error_message = String.Empty;
+    
+    // Lists for cascading dropdowns
+    private List<string> tenants_list = new List<string>();
+    private List<string> locations_list = new List<string>();
+    private List<string> groups_list = new List<string>();
+    
+    // IDs for filtering
+    private string selected_tenant_id = String.Empty;
+    private string selected_location_id = String.Empty;
+    
+    private int target_port = 3389;
+    private string protocol = "TCP";
+    private string description = String.Empty;
+    private bool is_persistent = true;
+    private DeviceInfo? selected_device = null;
+    
+    private bool creating_session = false;
+    private bool loading_sessions = true;
+    private bool loading_devices = false;
+    
+    private List<RelaySessionInfo> active_sessions = new List<RelaySessionInfo>();
+    private List<DeviceInfo> filtered_devices = new List<DeviceInfo>();
+    private System.Timers.Timer _autoRefreshTimer;
+    private bool _disposed = false;
+
+    // Relay Identities
+    private List<RelayIdentity> relay_identities = new List<RelayIdentity>();
+    private bool loading_identities = false;
+    private int current_admin_id = 0;
+
+    public class RelayIdentity
+    {
+        public int Id { get; set; }
+        public string ApiKey { get; set; } = String.Empty;
+    }
+
+    public class DeviceInfo
+    {
+        public string device_id { get; set; } = String.Empty;
+        public string device_name { get; set; } = String.Empty;
+        public string access_key { get; set; } = String.Empty;
+        public string tenant_name { get; set; } = String.Empty;
+        public string location_name { get; set; } = String.Empty;
+        public string group_name { get; set; } = String.Empty;
+        public bool online { get; set; }
+    }
+
+    public class RelaySessionInfo
+    {
+        public string session_id { get; set; }
+        public string target_device_id { get; set; }
+        public int target_port { get; set; }
+        public string protocol { get; set; }
+        public bool is_active { get; set; }
+        public int active_connections { get; set; }
+        public string created_at { get; set; }
+        public bool is_persistent { get; set; }
+        public bool enabled { get; set; }
+        
+        // Backend liefert diese Infos bereits
+        public string target_device_name { get; set; }
+        public string tenant_name { get; set; }
+        public string location_name { get; set; }
+        public string group_name { get; set; }
+        
+        // Neue Felder vom Backend
+        public bool is_device_ready { get; set; }
+        public string display_status { get; set; }
+        
+        // Für die UI
+        public string device_name => target_device_name ?? "Unknown Device";
+    }
+
+    public class CreateRelayResponse
+    {
+        public bool success { get; set; }
+        public string session_id { get; set; }
+        public string protocol { get; set; }
+        public string message { get; set; }
+        public string error { get; set; }
+    }
+
+    public class ListRelayResponse
+    {
+        public bool success { get; set; }
+        public int count { get; set; }
+        public List<RelaySessionInfo> sessions { get; set; }
+        public string error { get; set; }
+    }
+
+    public class CloseRelayResponse
+    {
+        public bool success { get; set; }
+        public string message { get; set; }
+        public string error { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+
+        if (user?.Identity is not { IsAuthenticated: true })
+        {
+            NavigationManager.NavigateTo("/login", true);
+            return;
+        }
+        
+        // Check permissions
+        if (!await Permissions())
+            return;
+        
+        // Get current admin ID
+        await Load_Current_Admin_Id();
+        
+        // Get relay server address from window location
+        relay_server_address = NavigationManager.Uri.Split("//")[1].Split("/")[0].Split(":")[0];
+
+        // Load tenants first
+        await Get_Tenants();
+        await Load_Active_Sessions();
+        
+        // Load relay identities
+        await Load_Relay_Identities();
+        
+        // Start auto-refresh timer (alle 3 Sekunden)
+        _autoRefreshTimer = new System.Timers.Timer(3000);
+        _autoRefreshTimer.Elapsed += async (sender, e) => await AutoRefreshSessions();
+        _autoRefreshTimer.AutoReset = true;
+        _autoRefreshTimer.Start();
+    }
+    
+    private async Task AutoRefreshSessions()
+    {
+        if (!_disposed)
+        {
+            await InvokeAsync(async () =>
+            {
+                await Load_Active_Sessions(silent: true);
+                StateHasChanged();
+            });
+        }
+    }
+    
+    public void Dispose()
+    {
+        _disposed = true;
+        _autoRefreshTimer?.Stop();
+        _autoRefreshTimer?.Dispose();
+    }
+
+    // Cascading selection watchers
+    private string _selected_tenant;
+    private string selected_tenant
+    {
+        get => _selected_tenant;
+        set
+        {
+            if (_selected_tenant != value)
+            {
+                _selected_tenant = value;
+                selected_location = String.Empty;
+                selected_group = String.Empty;
+                selected_device = null;
+                locations_list.Clear();
+                groups_list.Clear();
+                filtered_devices.Clear();
+                if (!String.IsNullOrEmpty(value))
+                {
+                    _ = Get_Locations();
+                }
+                StateHasChanged();
+            }
+        }
+    }
+
+    private string _selected_location;
+    private string selected_location
+    {
+        get => _selected_location;
+        set
+        {
+            if (_selected_location != value)
+            {
+                _selected_location = value;
+                selected_group = String.Empty;
+                selected_device = null;
+                groups_list.Clear();
+                filtered_devices.Clear();
+                if (!String.IsNullOrEmpty(value))
+                {
+                    _ = Get_Groups();
+                    _ = Load_Filtered_Devices();
+                }
+                StateHasChanged();
+            }
+        }
+    }
+
+    private string _selected_group;
+    private string selected_group
+    {
+        get => _selected_group;
+        set
+        {
+            if (_selected_group != value)
+            {
+                _selected_group = value;
+                selected_device = null;
+                filtered_devices.Clear();
+                if (!String.IsNullOrEmpty(selected_location))
+                {
+                    _ = Load_Filtered_Devices();
+                }
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task Get_Tenants()
+    {
+        try
+        {
+            string query = "SELECT * FROM tenants ORDER BY name ASC;";
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            await conn.OpenAsync();
+
+            MySqlCommand command = new MySqlCommand(query, conn);
+
+            using (DbDataReader reader = await command.ExecuteReaderAsync())
+            {
+                if (reader.HasRows)
+                {
+                    while (await reader.ReadAsync())
+                        tenants_list.Add(reader["name"].ToString() ?? "");
+                }
+            }
+
+            await conn.CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("Relay_Manager_Dialog -> Get_Tenants", "Error", ex.ToString());
+        }
+    }
+
+    private async Task Get_Locations()
+    {
+        locations_list.Clear();
+        
+        // Get tenant_id first
+        selected_tenant_id = await Get_Tenant_Id(selected_tenant);
+        
+        if (String.IsNullOrEmpty(selected_tenant_id))
+            return;
+
+        try
+        {
+            string query = "SELECT * FROM `locations` WHERE tenant_id = @tenant_id ORDER BY name ASC;";
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            await conn.OpenAsync();
+
+            MySqlCommand command = new MySqlCommand(query, conn);
+            command.Parameters.AddWithValue("@tenant_id", selected_tenant_id);
+
+            using (DbDataReader reader = await command.ExecuteReaderAsync())
+            {
+                if (reader.HasRows)
+                {
+                    while (await reader.ReadAsync())
+                        locations_list.Add(reader["name"].ToString() ?? "");
+                }
+            }
+
+            await conn.CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("Relay_Manager_Dialog -> Get_Locations", "Error", ex.ToString());
+        }
+        
+        StateHasChanged();
+    }
+
+    private async Task Get_Groups()
+    {
+        groups_list.Clear();
+        
+        // Get location_id first
+        selected_location_id = await Get_Location_Id(selected_location, selected_tenant_id);
+        
+        if (String.IsNullOrEmpty(selected_location_id))
+            return;
+
+        try
+        {
+            string query = "SELECT * FROM `groups` WHERE location_id = @location_id AND tenant_id = @tenant_id ORDER BY name ASC;";
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            await conn.OpenAsync();
+
+            MySqlCommand command = new MySqlCommand(query, conn);
+            command.Parameters.AddWithValue("@tenant_id", selected_tenant_id);
+            command.Parameters.AddWithValue("@location_id", selected_location_id);
+
+            using (DbDataReader reader = await command.ExecuteReaderAsync())
+            {
+                if (reader.HasRows)
+                {
+                    while (await reader.ReadAsync())
+                        groups_list.Add(reader["name"].ToString() ?? "");
+                }
+            }
+
+            await conn.CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("Relay_Manager_Dialog -> Get_Groups", "Error", ex.ToString());
+        }
+        
+        StateHasChanged();
+    }
+
+    private async Task<string> Get_Tenant_Id(string tenantName)
+    {
+        string result = String.Empty;
+        
+        try
+        {
+            string query = "SELECT id FROM tenants WHERE name = @tenant_name;";
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            await conn.OpenAsync();
+
+            MySqlCommand command = new MySqlCommand(query, conn);
+            command.Parameters.AddWithValue("@tenant_name", tenantName);
+
+            using (DbDataReader reader = await command.ExecuteReaderAsync())
+            {
+                if (reader.HasRows && await reader.ReadAsync())
+                {
+                    result = reader["id"].ToString() ?? "";
+                }
+            }
+
+            await conn.CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("Relay_Manager_Dialog -> Get_Tenant_Id", "Error", ex.ToString());
+        }
+
+        return result;
+    }
+
+    private async Task<string> Get_Location_Id(string locationName, string tenantId)
+    {
+        string result = String.Empty;
+        
+        try
+        {
+            string query = "SELECT id FROM `locations` WHERE name = @location_name AND tenant_id = @tenant_id;";
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            await conn.OpenAsync();
+
+            MySqlCommand command = new MySqlCommand(query, conn);
+            command.Parameters.AddWithValue("@location_name", locationName);
+            command.Parameters.AddWithValue("@tenant_id", tenantId);
+
+            using (DbDataReader reader = await command.ExecuteReaderAsync())
+            {
+                if (reader.HasRows && await reader.ReadAsync())
+                {
+                    result = reader["id"].ToString() ?? "";
+                }
+            }
+
+            await conn.CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("Relay_Manager_Dialog -> Get_Location_Id", "Error", ex.ToString());
+        }
+
+        return result;
+    }
+
+    private async Task<IEnumerable<DeviceInfo>> SearchDevices(string value, CancellationToken cancellationToken)
+    {
+        // If no search term, return all filtered devices
+        if (string.IsNullOrEmpty(value))
+            return await Task.FromResult(filtered_devices.AsEnumerable());
+
+        // Filter devices by name
+        return await Task.FromResult(filtered_devices.Where(d => 
+            d.device_name.Contains(value, StringComparison.InvariantCultureIgnoreCase)).AsEnumerable());
+    }
+
+    private async Task Load_Filtered_Devices()
+    {
+        loading_devices = true;
+        filtered_devices.Clear();
+        
+        try
+        {
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            await conn.OpenAsync();
+
+            string query;
+            MySqlCommand cmd;
+
+            // Build query based on selection
+            if (!String.IsNullOrEmpty(selected_group))
+            {
+                // Filter by tenant, location, and group
+                query = @"
+                    SELECT id, device_name, access_key, tenant_name, location_name, group_name
+                    FROM devices
+                    WHERE authorized = 1 
+                      AND tenant_name = @tenant_name 
+                      AND location_name = @location_name
+                      AND group_name = @group_name
+                    ORDER BY device_name";
+                
+                cmd = new MySqlCommand(query, conn);
+                cmd.Parameters.AddWithValue("@tenant_name", selected_tenant);
+                cmd.Parameters.AddWithValue("@location_name", selected_location);
+                cmd.Parameters.AddWithValue("@group_name", selected_group);
+            }
+            else
+            {
+                // Filter by tenant and location only
+                query = @"
+                    SELECT id, device_name, access_key, tenant_name, location_name, group_name
+                    FROM devices
+                    WHERE authorized = 1 
+                      AND tenant_name = @tenant_name 
+                      AND location_name = @location_name
+                    ORDER BY device_name";
+                
+                cmd = new MySqlCommand(query, conn);
+                cmd.Parameters.AddWithValue("@tenant_name", selected_tenant);
+                cmd.Parameters.AddWithValue("@location_name", selected_location);
+            }
+
+            using (DbDataReader reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    filtered_devices.Add(new DeviceInfo
+                    {
+                        device_id = reader["id"].ToString(),
+                        device_name = reader["device_name"].ToString(),
+                        access_key = reader["access_key"].ToString(),
+                        tenant_name = reader["tenant_name"].ToString() ?? "N/A",
+                        location_name = reader["location_name"].ToString() ?? "N/A",
+                        group_name = reader["group_name"].ToString() ?? "",
+                        online = false
+                    });
+                }
+            }
+
+            await conn.CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("Relay_Manager_Dialog -> Load_Filtered_Devices", "Error", ex.ToString());
+            error_message = $"Failed to load devices: {ex.Message}";
+        }
+        finally
+        {
+            loading_devices = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task Create_Relay_Session()
+    {
+        if (selected_device == null)
+        {
+            Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+            Snackbar.Add("Please select a target device", Severity.Warning);
+            return;
+        }
+
+        creating_session = true;
+        error_message = String.Empty;
+        StateHasChanged();
+
+        try
+        {
+            var requestData = new
+            {
+                target_device_id = selected_device.access_key,
+                target_port = target_port,
+                protocol = protocol,
+                is_persistent = Convert.ToBoolean(is_persistent ? 1 : 0),
+            };
+
+            var json = JsonSerializer.Serialize(requestData);
+            
+            string url = Configuration.Remote_Server.Connection_String + "/admin/relay/create";
+            var responseJson = await Classes.Helper.Http.POST_Request_Json_With_Api_Key(url, json, false);
+
+            if (string.IsNullOrEmpty(responseJson))
+            {
+                error_message = "Failed to create relay session - empty response";
+                Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+                Snackbar.Add(error_message, Severity.Error);
+                return;
+            }
+
+            var result = JsonSerializer.Deserialize<CreateRelayResponse>(responseJson, new JsonSerializerOptions 
+            { 
+                PropertyNameCaseInsensitive = true 
+            });
+
+            if (result?.success == true)
+            {
+                // If persistent, save to database
+                if (is_persistent)
+                {
+                    await Save_Persistent_Session(result.session_id, selected_device.access_key);
+                }
+                
+                Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+                Snackbar.Add($"Relay session created for {selected_device.device_name}!", Severity.Success);
+                
+                // Reset form but keep tenant/location/group selection
+                selected_device = null;
+                target_port = 3389;
+                description = String.Empty;
+                is_persistent = true;
+                
+                await Load_Active_Sessions(silent: false);
+            }
+            else
+            {
+                error_message = result?.error ?? "Failed to create relay session";
+                Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+                Snackbar.Add(error_message, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            error_message = $"Error: {ex.Message}";
+            Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+            Snackbar.Add(error_message, Severity.Error);
+            Logging.Handler.Error("Relay_Manager_Dialog -> Create_Relay_Session", "Error", ex.ToString());
+        }
+        finally
+        {
+            creating_session = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task Save_Persistent_Session(string sessionId, string accessKey)
+    {
+        try
+        {
+            // Get current username
+            var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+            string username = user.FindFirst(ClaimTypes.Email)?.Value ?? "Unknown";
+
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            await conn.OpenAsync();
+
+            // Get device id from access_key
+            string deviceIdQuery = "SELECT id FROM devices WHERE access_key = @access_key LIMIT 1";
+            MySqlCommand deviceIdCmd = new MySqlCommand(deviceIdQuery, conn);
+            deviceIdCmd.Parameters.AddWithValue("@access_key", accessKey);
+
+            object deviceIdResult = await deviceIdCmd.ExecuteScalarAsync();
+
+            if (deviceIdResult == null)
+            {
+                Logging.Handler.Error("Relay_Manager_Dialog -> Save_Persistent_Session", "Error", $"Device with access_key {accessKey} not found");
+                await conn.CloseAsync();
+                return;
+            }
+
+            int deviceId = Convert.ToInt32(deviceIdResult);
+
+            string query = @"
+                INSERT INTO relay_sessions
+                (enabled, session_id, target_device_id, target_port, protocol, created_at, created_by, description)
+                VALUES
+                (@enabled, @session_id, @target_device_id, @target_port, @protocol, @created_at, @created_by, @description)";
+
+            MySqlCommand cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@enabled", 1);
+            cmd.Parameters.AddWithValue("@session_id", sessionId);
+            cmd.Parameters.AddWithValue("@target_device_id", deviceId);
+            cmd.Parameters.AddWithValue("@target_port", target_port);
+            cmd.Parameters.AddWithValue("@protocol", protocol);
+            cmd.Parameters.AddWithValue("@created_at", DateTime.Now);
+            cmd.Parameters.AddWithValue("@created_by", username);
+            cmd.Parameters.AddWithValue("@description", description ?? "");
+
+            await cmd.ExecuteNonQueryAsync();
+            await conn.CloseAsync();
+
+            Logging.Handler.Debug("Relay_Manager_Dialog -> Save_Persistent_Session", "Saved", $"Session {sessionId} saved to database with device_id {deviceId}");
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("Relay_Manager_Dialog -> Save_Persistent_Session", "Error", ex.ToString());
+            // Don't throw - session is still created on relay server, just not persisted
+        }
+    }
+
+    private async Task Load_Active_Sessions(bool silent = false)
+    {
+        if (!silent)
+        {
+            loading_sessions = true;
+            StateHasChanged();
+        }
+        
+        error_message = String.Empty;
+
+        try
+        {
+            string url = Configuration.Remote_Server.Connection_String + "/admin/relay/list";
+            var responseJson = await Classes.Helper.Http.Get_Request_With_Api_Key(url, false);
+            
+            if (string.IsNullOrEmpty(responseJson))
+            {
+                if (!silent)
+                    error_message = "Failed to load active sessions - empty response";
+                return;
+            }
+
+            var result = JsonSerializer.Deserialize<ListRelayResponse>(responseJson, new JsonSerializerOptions 
+            { 
+                PropertyNameCaseInsensitive = true 
+            });
+
+            if (result?.success == true)
+            {
+                active_sessions = result.sessions ?? new List<RelaySessionInfo>();
+                
+                // Backend liefert bereits alle nötigen Informationen
+                // (target_device_name, tenant_name, location_name, group_name)
+                // Keine zusätzliche DB-Abfrage mehr nötig!
+                
+                foreach (var session in active_sessions)
+                {
+                    Logging.Handler.Debug("Relay_Manager_Dialog -> Load_Active_Sessions",
+                        $"Session {session.session_id}",
+                        $"Device: {session.target_device_name ?? "N/A"}, Tenant: {session.tenant_name ?? "N/A"}, Persistent: {session.is_persistent}, Enabled: {session.enabled}");
+                }
+            }
+            else
+            {
+                if (!silent)
+                    error_message = result?.error ?? "Failed to load active sessions";
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!silent)
+            {
+                error_message = $"Error loading sessions: {ex.Message}";
+                Logging.Handler.Error("Relay_Manager_Dialog -> Load_Active_Sessions", "Error", ex.ToString());
+            }
+        }
+        finally
+        {
+            if (!silent)
+            {
+                loading_sessions = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task Close_Relay_Session(string sessionId)
+    {
+        // Show confirmation dialog
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            FullWidth = true,
+            MaxWidth = MaxWidth.Medium,
+            BackgroundClass = "dialog-blurring",
+        };
+
+        bool? dialog_result = await DialogService.ShowMessageBox(
+            "Warning", 
+            "Are you sure you want to close this relay session? Active connections will be terminated.", 
+            yesText: "Confirm", 
+            cancelText: "Cancel", 
+            options: options);
+
+        bool state = Convert.ToBoolean(dialog_result == null ? "false" : "true");
+
+        if (!state)
+            return;
+
+        try
+        {
+            string url = Configuration.Remote_Server.Connection_String + "/admin/relay/close?session_id=" + sessionId;
+            var responseJson = await Classes.Helper.Http.POST_Request_With_Api_Key(url, false);
+
+            if (string.IsNullOrEmpty(responseJson))
+            {
+                error_message = "Failed to close relay session - empty response";
+                Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+                Snackbar.Add(error_message, Severity.Error);
+                return;
+            }
+
+            var result = JsonSerializer.Deserialize<CloseRelayResponse>(responseJson, new JsonSerializerOptions 
+            { 
+                PropertyNameCaseInsensitive = true 
+            });
+
+            if (result?.success == true)
+            {
+                // Delete from database if persistent
+                await Delete_Persistent_Session(sessionId);
+                
+                Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+                Snackbar.Add("Relay session closed successfully", Severity.Success);
+                
+                await Load_Active_Sessions(silent: false);
+            }
+            else
+            {
+                error_message = result?.error ?? "Failed to close relay session";
+                Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+                Snackbar.Add(error_message, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            error_message = $"Error closing session: {ex.Message}";
+            Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+            Snackbar.Add(error_message, Severity.Error);
+            Logging.Handler.Error("Relay_Manager_Dialog -> Close_Relay_Session", "Error", ex.ToString());
+        }
+    }
+
+    private async Task Delete_Persistent_Session(string sessionId)
+    {
+        try
+        {
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            await conn.OpenAsync();
+
+            string query = "DELETE FROM relay_sessions WHERE session_id = @session_id";
+            MySqlCommand cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@session_id", sessionId);
+
+            await cmd.ExecuteNonQueryAsync();
+            await conn.CloseAsync();
+
+            Logging.Handler.Debug("Relay_Manager_Dialog -> Delete_Persistent_Session", "Deleted", $"Session {sessionId} deleted from database");
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("Relay_Manager_Dialog -> Delete_Persistent_Session", "Error", ex.ToString());
+            // Don't throw - session is closed on relay server anyway
+        }
+    }
+
+    private async Task Toggle_Session_Enabled(RelaySessionInfo session, bool enabled)
+    {
+        try
+        {
+            int enabledInt = enabled ? 1 : 0;
+            
+            Logging.Handler.Debug("Relay_Manager_Dialog -> Toggle_Session_Enabled", 
+                $"Session {session.session_id}", 
+                $"Setting enabled to {enabledInt}");
+
+            // Optimistically update the UI immediately
+            bool oldValue = session.enabled;
+            session.enabled = enabled;
+            StateHasChanged();
+
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            await conn.OpenAsync();
+
+            string query = "UPDATE relay_sessions SET enabled = @enabled WHERE session_id = @session_id";
+            MySqlCommand cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@enabled", enabledInt);
+            cmd.Parameters.AddWithValue("@session_id", session.session_id);
+
+            int rowsAffected = await cmd.ExecuteNonQueryAsync();
+            await conn.CloseAsync();
+
+            if (rowsAffected > 0)
+            {
+                Logging.Handler.Debug("Relay_Manager_Dialog -> Toggle_Session_Enabled", 
+                    $"Session {session.session_id}", 
+                    $"Successfully updated to enabled={enabledInt}");
+                
+                Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+                Snackbar.Add($"Session {(enabled ? "enabled" : "disabled")} successfully", Severity.Success);
+            }
+            else
+            {
+                // Rollback on failure
+                session.enabled = oldValue;
+                StateHasChanged();
+                
+                Logging.Handler.Error("Relay_Manager_Dialog -> Toggle_Session_Enabled", 
+                    $"Session {session.session_id}", 
+                    "No rows affected - session not found in DB");
+                
+                Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+                Snackbar.Add("Session not found in database", Severity.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Rollback on error
+            session.enabled = !session.enabled;
+            StateHasChanged();
+            
+            Logging.Handler.Error("Relay_Manager_Dialog -> Toggle_Session_Enabled", "Error", ex.ToString());
+            Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+            Snackbar.Add($"Failed to toggle session state: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task Copy_Connection_String(RelaySessionInfo session)
+    {
+        string connectionString = $"{relay_server_address}";
+        await JSRuntime.InvokeVoidAsync("copyToClipboard", connectionString);
+        
+        Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+        Snackbar.Add("Connection address copied to clipboard!", Severity.Info);
+    }
+
+    private async Task Load_Current_Admin_Id()
+    {
+        try
+        {
+            var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+            string username = user.FindFirst(ClaimTypes.Email)?.Value ?? String.Empty;
+
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            await conn.OpenAsync();
+
+            string query = "SELECT id FROM accounts WHERE username = @username;";
+            MySqlCommand cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@username", username);
+
+            using (DbDataReader reader = await cmd.ExecuteReaderAsync())
+            {
+                if (reader.HasRows && await reader.ReadAsync())
+                {
+                    current_admin_id = Convert.ToInt32(reader["id"]);
+                }
+            }
+
+            await conn.CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("Relay_Manager_Dialog -> Load_Current_Admin_Id", "Error", ex.ToString());
+        }
+    }
+
+    private async Task Load_Relay_Identities()
+    {
+        loadingRelayIdentities = true;
+        relay_identities.Clear();
+
+        try
+        {
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            await conn.OpenAsync();
+
+            string query = "SELECT * FROM relay_admins WHERE admin_id = @admin_id ORDER BY created_at DESC;";
+
+            MySqlCommand cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@admin_id", current_admin_id);
+
+            using (DbDataReader reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    relay_identities.Add(new RelayIdentity
+                    {
+                        Id = Convert.ToInt32(reader["id"]),
+                        ApiKey = reader["api_key"].ToString() ?? String.Empty
+                    });
+                }
+            }
+
+            await conn.CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("Relay_Manager_Dialog -> Load_Relay_Identities", "Error", ex.ToString());
+        }
+        finally
+        {
+            loadingRelayIdentities = false;
+        }
+    }
+
+    private async Task Refresh_Sessions()
+    {
+        await Load_Active_Sessions(silent: false);
+    }
+
+    private async Task OpenRelayIdentitiesOverview()
+    {
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            FullWidth = true,
+            MaxWidth = MaxWidth.ExtraLarge,
+            BackgroundClass = "dialog-blurring",
+        };
+
+        var dialog = await DialogService.ShowAsync<Components.Pages.Account.Dialogs.Relay_Identities_Overview_Dialog>(
+            "Relay API Keys Overview", 
+            options);
+        
+        var result = await dialog.Result;
+        
+        // Refresh sessions after closing the dialog (optional)
+        if (result != null && !result.Canceled)
+        {
+            await Load_Active_Sessions(silent: false);
+        }
+    }
+    
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+}
+

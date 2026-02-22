@@ -2,7 +2,7 @@
 {
     public class Web_Console
     {
-        public static string title = String.Empty;
+        public static string title = "NetLock RMM";
         public static string logoBase64 = String.Empty;
         public static string language = "en-US";
         public static bool loggingEnabled = false;

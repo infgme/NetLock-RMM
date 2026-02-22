@@ -28,200 +28,20 @@ namespace Global.Device_Information
 
             if (OperatingSystem.IsWindows())
             {
-                // Create a list of JSON strings for each installed software
-                List<string> applications_installedJsonList = new List<string>();
-
                 try
                 {
-                    //Collect all 32bit installed programs
-                    RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
-                    if (key != null)
+                    // Collect from all registry locations
+                    // 32-bit apps on 64-bit Windows
+                    CollectFromRegistryKey(Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"), currentApplications);
+                    
+                    // 64-bit apps (WOW6432Node)
+                    using (var localKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64))
                     {
-                        Parallel.ForEach(key.GetSubKeyNames(), subKeyName =>
-                        {
-                            RegistryKey subKey = key.OpenSubKey(subKeyName);
-                            if (subKey != null)
-                            {
-                                bool empty = true;
-
-                                string DisplayName_32bit = null;
-                                string DisplayVersion_32bit = null;
-                                string InstallDate_32bit = null;
-                                string InstallLocation_32bit = null;
-                                string Publisher_32bit = null;
-                                string UninstallString_32bit = null;
-
-                                try
-                                {
-                                    DisplayName_32bit = subKey.GetValue("DisplayName").ToString();
-                                    if (!string.IsNullOrEmpty(DisplayName_32bit))
-                                        empty = false;
-                                }
-                                catch { }
-
-                                try
-                                {
-                                    DisplayVersion_32bit = subKey.GetValue("DisplayVersion_32bit").ToString();
-                                    if (!string.IsNullOrEmpty(DisplayVersion_32bit))
-                                        empty = false;
-                                }
-                                catch { }
-
-                                try
-                                {
-                                    InstallDate_32bit = subKey.GetValue("InstallDate").ToString();
-                                    if (!string.IsNullOrEmpty(InstallDate_32bit))
-                                        empty = false;
-                                }
-                                catch { }
-
-                                try
-                                {
-                                    InstallLocation_32bit = subKey.GetValue("InstallLocation").ToString();
-                                    if (!string.IsNullOrEmpty(InstallLocation_32bit))
-                                        empty = false;
-                                }
-                                catch { }
-
-                                try
-                                {
-                                    Publisher_32bit = subKey.GetValue("Publisher").ToString();
-                                    if (!string.IsNullOrEmpty(Publisher_32bit))
-                                        empty = false;
-                                }
-                                catch { }
-
-                                try
-                                {
-                                    UninstallString_32bit = subKey.GetValue("UninstallString").ToString();
-                                    if (!string.IsNullOrEmpty(UninstallString_32bit))
-                                        empty = false;
-                                }
-                                catch { }
-
-                                // Check if at least one value was found
-                                if (!empty)
-                                {
-                                    // Create installed software object
-                                    Applications_Installed applicationInfo = new Applications_Installed
-                                    {
-                                        name = string.IsNullOrEmpty(DisplayName_32bit) ? "N/A" : DisplayName_32bit,
-                                        version = string.IsNullOrEmpty(DisplayVersion_32bit) ? "N/A" : DisplayVersion_32bit,
-                                        installed_date = string.IsNullOrEmpty(InstallDate_32bit) ? "N/A" : InstallDate_32bit,
-                                        installation_path = string.IsNullOrEmpty(InstallLocation_32bit) ? "N/A" : InstallLocation_32bit,
-                                        vendor = string.IsNullOrEmpty(Publisher_32bit) ? "N/A" : Publisher_32bit,
-                                        uninstallation_string = string.IsNullOrEmpty(UninstallString_32bit) ? "N/A" : UninstallString_32bit
-                                    };
-
-                                    // Serialize the process object into a JSON string and add it to the list
-                                    string applications_installedJson = JsonSerializer.Serialize(applicationInfo, new JsonSerializerOptions { WriteIndented = true });
-                                    Logging.Device_Information("Client_Information.Installed_Software.Collect", "applications_installedJson", applications_installedJson);
-                                    lock (applications_installedJsonList)
-                                    {
-                                        applications_installedJsonList.Add(applications_installedJson);
-                                        currentApplications.Add(applicationInfo); // Add object to comparison list
-                                    }
-                                }
-                            }
-                        });
+                        CollectFromRegistryKey(localKey.OpenSubKey(@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"), currentApplications);
                     }
 
-
-                    //Collect all 64bit installed programs
-                    RegistryKey localKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
-                    localKey = localKey.OpenSubKey(@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall");
-
-                    Parallel.ForEach(localKey.GetSubKeyNames(), entry =>
-                    {
-                        // 64bit
-                        string DisplayName_64bit = null;
-                        string DisplayVersion_64bit = null;
-                        string InstallDate_64bit = null;
-                        string InstallLocation_64bit = null;
-                        string Publisher_64bit = null;
-                        string UninstallString_64bit = null;
-
-                        RegistryKey sub_item = localKey.OpenSubKey(entry);
-                        if (sub_item != null)
-                        {
-                            bool empty = true;
-
-                            try
-                            {
-                                DisplayName_64bit = sub_item.GetValue("DisplayName")?.ToString();
-                                if (!string.IsNullOrEmpty(DisplayName_64bit))
-                                    empty = false;
-                            }
-                            catch { }
-
-                            try
-                            {
-                                DisplayVersion_64bit = sub_item.GetValue("DisplayVersion")?.ToString();
-                                if (!string.IsNullOrEmpty(DisplayVersion_64bit))
-                                    empty = false;
-                            }
-                            catch { }
-
-                            try
-                            {
-                                InstallDate_64bit = sub_item.GetValue("InstallDate")?.ToString();
-                                if (!string.IsNullOrEmpty(InstallDate_64bit))
-                                    empty = false;
-                            }
-                            catch { }
-
-                            try
-                            {
-                                InstallLocation_64bit = sub_item.GetValue("InstallLocation")?.ToString();
-                                if (!string.IsNullOrEmpty(InstallLocation_64bit))
-                                    empty = false;
-                            }
-                            catch { }
-
-                            try
-                            {
-                                Publisher_64bit = sub_item.GetValue("Publisher")?.ToString();
-                                if (!string.IsNullOrEmpty(Publisher_64bit))
-                                    empty = false;
-                            }
-                            catch { }
-
-                            try
-                            {
-                                UninstallString_64bit = sub_item.GetValue("UninstallString")?.ToString();
-                                if (!string.IsNullOrEmpty(UninstallString_64bit))
-                                    empty = false;
-                            }
-                            catch { }
-
-                            if (!empty)
-                            {
-                                // Create JSON object
-                                Applications_Installed applicationInfo = new Applications_Installed
-                                {
-                                    name = string.IsNullOrEmpty(DisplayName_64bit) ? "N/A" : DisplayName_64bit,
-                                    version = string.IsNullOrEmpty(DisplayVersion_64bit) ? "N/A" : DisplayVersion_64bit,
-                                    installed_date = string.IsNullOrEmpty(InstallDate_64bit) ? "N/A" : InstallDate_64bit,
-                                    installation_path = string.IsNullOrEmpty(InstallLocation_64bit) ? "N/A" : InstallLocation_64bit,
-                                    vendor = string.IsNullOrEmpty(Publisher_64bit) ? "N/A" : Publisher_64bit,
-                                    uninstallation_string = string.IsNullOrEmpty(UninstallString_64bit) ? "N/A" : UninstallString_64bit
-                                };
-
-                                // Ensure thread-safe access to shared list
-                                lock (applications_installedJsonList)
-                                {
-                                    // Serialize the JSON object and add it to the list
-                                    string applications_installedJson = JsonSerializer.Serialize(applicationInfo, new JsonSerializerOptions { WriteIndented = true });
-
-                                    applications_installedJsonList.Add(applications_installedJson);
-                                    currentApplications.Add(applicationInfo); // Add object to comparison list
-                                }
-                            }
-                        }
-                    });
-
-                    // Create and log JSON array
-                    applications_installed_json = "[" + string.Join("," + Environment.NewLine, applications_installedJsonList) + "]";
+                    // Serialize
+                    applications_installed_json = JsonSerializer.Serialize(currentApplications, new JsonSerializerOptions { WriteIndented = true });
                     Logging.Device_Information("Device_Information.Software.Applications_Installed", "applications_installed_json", applications_installed_json);
                 }
                 catch (Exception ex)
@@ -1241,6 +1061,50 @@ namespace Global.Device_Information
             {
                 Device_Worker.cronjobsJson = cronjobsJson;
                 return "[]"; // return empty JSON array till the implementation is done
+            }
+        }
+
+        /// <summary>
+        /// Helper method to collect applications from a registry key - eliminates code duplication
+        /// </summary>
+        private static void CollectFromRegistryKey(RegistryKey key, List<Applications_Installed> applicationsList)
+        {
+            if (key == null) return;
+
+            try
+            {
+                foreach (string subKeyName in key.GetSubKeyNames())
+                {
+                    using (RegistryKey subKey = key.OpenSubKey(subKeyName))
+                    {
+                        if (subKey == null) continue;
+
+                        // Use null-coalescing for cleaner code
+                        string displayName = subKey.GetValue("DisplayName")?.ToString();
+                        string displayVersion = subKey.GetValue("DisplayVersion")?.ToString();
+                        string installDate = subKey.GetValue("InstallDate")?.ToString();
+                        string installLocation = subKey.GetValue("InstallLocation")?.ToString();
+                        string publisher = subKey.GetValue("Publisher")?.ToString();
+                        string uninstallString = subKey.GetValue("UninstallString")?.ToString();
+
+                        // Skip if no meaningful data (at least DisplayName should be present)
+                        if (string.IsNullOrEmpty(displayName)) continue;
+
+                        applicationsList.Add(new Applications_Installed
+                        {
+                            name = displayName ?? "N/A",
+                            version = displayVersion ?? "N/A",
+                            installed_date = installDate ?? "N/A",
+                            installation_path = installLocation ?? "N/A",
+                            vendor = publisher ?? "N/A",
+                            uninstallation_string = uninstallString ?? "N/A"
+                        });
+                    }
+                }
+            }
+            finally
+            {
+                key.Dispose();
             }
         }
     }

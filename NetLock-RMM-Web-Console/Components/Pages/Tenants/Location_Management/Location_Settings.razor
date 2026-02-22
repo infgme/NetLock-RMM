@@ -303,12 +303,14 @@
 
         show_add_group_dialog_open = true;
 
-        var result = await this.DialogService.Show<Tenants.Dialogs.Group_Management.Add_Group_Dialog>(string.Empty, parameters, options).Result;
+        var result = await (await DialogService.ShowAsync<Tenants.Dialogs.Group_Management.Add_Group_Dialog>(string.Empty, parameters, options)).Result;
 
         show_add_group_dialog_open = false;
 
         if (result.Canceled)
             return;
+
+        await Get_Groups_Overview();
     }
 
     private bool show_delete_group_dialog_open = false;
@@ -333,12 +335,14 @@
 
         show_delete_group_dialog_open = true;
 
-        var result = await this.DialogService.Show<Tenants.Dialogs.Group_Management.Delete_Group_Dialog>(string.Empty, parameters, options).Result;
+        var result = await (await DialogService.ShowAsync<Tenants.Dialogs.Group_Management.Delete_Group_Dialog>(string.Empty, parameters, options)).Result;
 
         show_delete_group_dialog_open = false;
 
         if (result.Canceled)
             return;
+        
+        await Get_Groups_Overview();
     }
 
     private bool show_edit_group_dialog_open = false;
@@ -365,12 +369,14 @@
 
         show_edit_group_dialog_open = true;
 
-        var result = await this.DialogService.Show<Tenants.Dialogs.Group_Management.Edit_Group_Dialog>(string.Empty, parameters, options).Result;
+        var result = await (await DialogService.ShowAsync<Tenants.Dialogs.Group_Management.Edit_Group_Dialog>(string.Empty, parameters, options)).Result;
 
         show_edit_group_dialog_open = false;
 
         if (result.Canceled)
             return;
+        
+        await Get_Groups_Overview();
     }
 
     private bool delete_location_dialog_open = false;
@@ -394,7 +400,7 @@
 
         delete_location_dialog_open = true;
 
-        var result = await this.DialogService.Show<Tenants.Dialogs.Location_Management.Delete_Location_Dialog>(string.Empty, parameters, options).Result;
+        var result = await (await DialogService.ShowAsync<Tenants.Dialogs.Location_Management.Delete_Location_Dialog>(string.Empty, parameters, options)).Result;
 
         delete_location_dialog_open = false;
 
@@ -427,7 +433,7 @@
 
         show_edit_location_dialog_open = true;
 
-        var result = await DialogService.Show<Tenants.Dialogs.Location_Management.Edit_Location_Dialog>(string.Empty, parameters, options).Result;
+        var result = await (await DialogService.ShowAsync<Tenants.Dialogs.Location_Management.Edit_Location_Dialog>(string.Empty, parameters, options)).Result;
 
         show_edit_location_dialog_open = false;
 

@@ -1,0 +1,75 @@
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h5">Download Config Replacement Script</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body1" Class="mb-4">
+            Select the platform for which you want to download the server configuration replacement script.
+        </MudText>
+        
+        <MudText Typo="Typo.body2" Class="mb-3" Color="Color.Info">
+            <strong>Note:</strong> These scripts will replace the complete server_config.json file with a new unencrypted version. The agent will automatically encrypt the new configuration. Services are NOT restarted automatically. This will also cause the device to re-register with the server, which will cause in a double device entry, you have to delete the older one.
+        </MudText>
+
+        <MudRadioGroup @bind-Value="selectedPlatform">
+            <MudRadio Value="@("windows")" Color="Color.Primary">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <MudIcon Icon="@Icons.Custom.Brands.MicrosoftWindows" />
+                    <div>
+                        <MudText Typo="Typo.body1"><strong>Windows (PowerShell)</strong></MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">PowerShell script (.ps1) for Windows agents</MudText>
+                    </div>
+                </div>
+            </MudRadio>
+            
+            <MudRadio Value="@("linux")" Color="Color.Primary" Class="mt-3">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <MudIcon Icon="@Icons.Custom.Brands.Linux" />
+                    <div>
+                        <MudText Typo="Typo.body1"><strong>Linux (Bash)</strong></MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Bash script (.sh) for Linux agents</MudText>
+                    </div>
+                </div>
+            </MudRadio>
+            
+            <MudRadio Value="@("macos")" Color="Color.Primary" Class="mt-3">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <MudIcon Icon="@Icons.Custom.Brands.Apple" />
+                    <div>
+                        <MudText Typo="Typo.body1"><strong>macOS (Zsh/Bash)</strong></MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Zsh script (.sh) for macOS agents</MudText>
+                    </div>
+                </div>
+            </MudRadio>
+        </MudRadioGroup>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text" Size="@Size.Small" Color="@Color.Default">Cancel</MudButton>
+        <MudButton OnClick="Download" Variant="Variant.Filled" Size="@Size.Small" Color="@Color.Primary" Disabled="@(string.IsNullOrEmpty(selectedPlatform))">Download</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; }
+
+    private string selectedPlatform = "windows";
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    private void Download()
+    {
+        if (string.IsNullOrEmpty(selectedPlatform))
+        {
+            Snackbar.Add("Please select a platform.", Severity.Warning);
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok(selectedPlatform));
+    }
+}
+

@@ -10,6 +10,28 @@
 @inject ISnackbar Snackbar
 
 <style>
+.changelog-iframe {
+    width: 100%;
+    height: calc(100vh - 180px);
+    min-height: 500px;
+    border: none;
+    border-radius: 8px;
+}
+
+.changelog-dialog .mud-dialog-content {
+    padding: 0 !important;
+    overflow: hidden;
+}
+
+.changelog-dialog {
+    height: 95vh !important;
+    max-height: 95vh !important;
+}
+
+.changelog-tabs {
+    margin-bottom: 1rem;
+}
+
 .markdown-body {
     white-space: normal;
     line-height: 1.6;
@@ -44,42 +66,23 @@
 }
 </style>
 
-<MudDialog>
+<MudDialog Class="changelog-dialog">
     <TitleContent>
-        <MudText Typo="Typo.h5">News & Changelogs</MudText>
+        <MudText Typo="Typo.h5">New version released (@Application_Settings.web_console_version)</MudText>
     </TitleContent>
 
     <DialogContent>
-        <MudPaper Class="markdown-body" Style="padding: 1rem;">
-            @((MarkupString)currentChangelogHtml)
-        </MudPaper>
-
-        <MudText Typo="Typo.h5" Class="mt-5">Previously</MudText>
-
-        @foreach (var changelog in changelogs)
-        {
-            <MudExpansionPanel Class="mt-3" Expanded="false">
-                <TitleContent>
-                    <div class="d-flex">
-                        <MudIcon Icon="@Icons.Material.Filled.History" class="mr-3"></MudIcon>
-                        <MudText Typo="Typo.body1">@changelog.Key</MudText>
-                    </div>
-                </TitleContent>
-
-                <ChildContent>
-                    <div class="markdown-body">
-                        @((MarkupString)Markdown.ToHtml(changelog.Value))
-                    </div>
-                </ChildContent>
-            </MudExpansionPanel>
-        }
+        <iframe src="https://netlockrmm.com/blog" class="changelog-iframe" title="NetLock RMM Blog"></iframe>
     </DialogContent>
 
     <DialogActions>
+        <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" Href="https://netlockrmm.com/blog" Target="_blank">
+            <MudIcon Icon="@Icons.Material.Filled.OpenInNew" Class="mr-1" Size="Size.Small" />
+            Open in Browser
+        </MudButton>
         <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Default" OnClick="OK">Close</MudButton>
     </DialogActions>
 </MudDialog>
-
 
 @code {
 
@@ -91,6 +94,8 @@
     protected override async Task OnInitializedAsync()
     {
         // Always the latest changelog on top
+        changelogs.Add("2.6.0.1: Smaller improvements, requires agent update", await Base64.Handler.Decode(Changelogs.v2561));
+        changelogs.Add("2.6.0.0: SSO, Webhook, Relay Server, Windows EventLog Viewer, Theme Editor & More", await Base64.Handler.Decode(Changelogs.v2560));
         changelogs.Add("2.5.3.0: Cosmic-Dawn 2.5.3.0", await Base64.Handler.Decode(Changelogs.v2530));
         changelogs.Add("2.5.2.8: Cosmic-Dawn preview", await Base64.Handler.Decode(Changelogs.v2528));
         changelogs.Add("2.5.2.7: Cosmic-Dawn preview", await Base64.Handler.Decode(Changelogs.v2527));
@@ -111,7 +116,7 @@
             .UseYamlFrontMatter()
             .Build();
 
-        currentChangelogHtml = Markdown.ToHtml(await Base64.Handler.Decode(Changelogs.v2530), pipeline); // Current changelog
+        currentChangelogHtml = Markdown.ToHtml(await Base64.Handler.Decode(Changelogs.v2561), pipeline); // Current changelog
     }
 
     private void OK()

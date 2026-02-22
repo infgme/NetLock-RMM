@@ -63,6 +63,7 @@
                 <MudTextField Label="Update Server" T="string" @bind-Value="update_servers" @bind-Value:after="CleanInput" Required="true" RequiredError="@Localizer["required"]" Immediate="@true" ReadOnly="false" />
                 <MudTextField Label="Trust Server" T="string" @bind-Value="trust_servers" @bind-Value:after="CleanInput" Required="true" RequiredError="@Localizer["required"]" Immediate="@true" ReadOnly="false" />
                 <MudTextField Label="File Server" T="string" @bind-Value="file_servers" @bind-Value:after="CleanInput" Required="true" RequiredError="@Localizer["required"]" Immediate="@true" ReadOnly="false" />
+                <MudTextField Label="Relay Server" T="string" @bind-Value="relay_servers" @bind-Value:after="CleanInput" Required="true" RequiredError="@Localizer["required"]" Immediate="@true" ReadOnly="false" />
 
                 <MudSelect Class="mt-2" T="string" Label="@Localizer["tenant"]" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" @bind-Value="tenant_name" @bind-Value:after="async () => { await Get_Tenant_Id(tenant_name); }" Immediate="true" Required="true" RequiredError="@Localizer["required"]">
                     @{
@@ -168,6 +169,7 @@
         @if (!String.IsNullOrEmpty(name) && !creating_installer)
         {
             <MudButton OnClick="Update_Configuration" Variant="Variant.Filled" Size="@Size.Small" Color="@Color.Success" Disabled="@(String.IsNullOrEmpty(name) || String.IsNullOrEmpty(communication_servers) || String.IsNullOrEmpty(remote_servers) || String.IsNullOrEmpty(update_servers) || String.IsNullOrEmpty(trust_servers) || String.IsNullOrEmpty(tenant_name)|| String.IsNullOrEmpty(location_name))">@Localizer["save"]</MudButton>
+            <MudButton OnClick="Show_Config_Replacement_Platform_Dialog" Variant="Variant.Filled" Size="@Size.Small" Color="@Color.Warning" Disabled="@(String.IsNullOrEmpty(name) || String.IsNullOrEmpty(communication_servers) || String.IsNullOrEmpty(remote_servers) || String.IsNullOrEmpty(update_servers) || String.IsNullOrEmpty(trust_servers) || String.IsNullOrEmpty(tenant_name)|| String.IsNullOrEmpty(location_name))">Download Config Replacement Scripts</MudButton>
             <MudButton OnClick="Download_Configuration" Variant="Variant.Filled" Size="@Size.Small" Color="@Color.Info" Disabled="@(String.IsNullOrEmpty(name) || String.IsNullOrEmpty(communication_servers) || String.IsNullOrEmpty(remote_servers) || String.IsNullOrEmpty(update_servers) || String.IsNullOrEmpty(trust_servers) || String.IsNullOrEmpty(tenant_name)|| String.IsNullOrEmpty(location_name))">@Localizer["download_config"]</MudButton>
         }
 
@@ -192,6 +194,7 @@
     private string update_servers = String.Empty;
     private string trust_servers = String.Empty;
     private string file_servers = String.Empty;
+    private string relay_servers = String.Empty;
     private string tenant_name = String.Empty;
     private string tenant_guid = String.Empty;
     private string tenant_id = String.Empty;
@@ -243,9 +246,16 @@
             trust_servers = trust_servers.Replace("http://", "").Replace("https://", "").Trim();
             protocolRemoved = true;
         }
+
         if (file_servers.Contains("http://") || file_servers.Contains("https://"))
         {
             file_servers = file_servers.Replace("http://", "").Replace("https://", "").Trim();
+            protocolRemoved = true;
+        }
+
+        if (relay_servers.Contains("http://") || relay_servers.Contains("https://"))
+        {
+            relay_servers = relay_servers.Replace("http://", "").Replace("https://", "").Trim();
             protocolRemoved = true;
         }
 
@@ -474,6 +484,7 @@
                         update_servers = reader["update_servers"].ToString() ?? String.Empty;
                         trust_servers = reader["trust_servers"].ToString() ?? String.Empty;
                         file_servers = reader["file_servers"].ToString() ?? String.Empty;
+                        relay_servers = reader["relay_servers"].ToString() ?? String.Empty;
                         tenant_id = reader["tenant_id"].ToString() ?? String.Empty;
                         location_id = reader["location_id"].ToString() ?? String.Empty;
                         language = reader["language"].ToString() ?? String.Empty;
@@ -618,7 +629,7 @@
         {
             await conn.OpenAsync();
 
-            string query = "UPDATE agent_package_configurations SET `name` = @name, `ssl` = @ssl, communication_servers = @communication_servers, remote_servers = @remote_servers, update_servers = @update_servers, trust_servers = @trust_servers, file_servers = @file_servers, tenant_id = @tenant_id, location_id = @location_id, language = @language, auto_authorize_until = @auto_authorize_until WHERE id = @id;";
+            string query = "UPDATE agent_package_configurations SET `name` = @name, `ssl` = @ssl, communication_servers = @communication_servers, remote_servers = @remote_servers, update_servers = @update_servers, trust_servers = @trust_servers, file_servers = @file_servers, relay_servers = @relay_servers, tenant_id = @tenant_id, location_id = @location_id, language = @language, auto_authorize_until = @auto_authorize_until WHERE id = @id;";
 
             MySqlCommand cmd = new MySqlCommand(query, conn);
             cmd.Parameters.AddWithValue("@id", id);
@@ -628,6 +639,7 @@
             cmd.Parameters.AddWithValue("@update_servers", update_servers);
             cmd.Parameters.AddWithValue("@trust_servers", trust_servers);
             cmd.Parameters.AddWithValue("@file_servers", file_servers);
+            cmd.Parameters.AddWithValue("@relay_servers", relay_servers);
             cmd.Parameters.AddWithValue("@tenant_id", tenant_id);
             cmd.Parameters.AddWithValue("@location_id", location_id);
             cmd.Parameters.AddWithValue("@language", language);
@@ -666,6 +678,7 @@
                 update_servers = update_servers,
                 trust_servers = trust_servers,
                 file_servers = file_servers,
+                relay_servers = relay_servers,
                 tenant_guid = tenant_guid,
                 location_guid = location_guid,
                 language = language,
@@ -696,7 +709,7 @@
                 BackgroundClass = "dialog-blurring",
             };
 
-        var result = await this.DialogService.Show<Layout.Agent_Download.Add_Agent_Configuration_Dialog>(string.Empty, options).Result;
+        var result = await (await DialogService.ShowAsync<Layout.Agent_Download.Add_Agent_Configuration_Dialog>(string.Empty, options)).Result;
 
         if (result.Canceled)
             return;
@@ -707,7 +720,7 @@
             await Get_Configurations();
     }
 
-    //OSSCH_START 28649cca-2e9a-469f-8c17-167da62e8462 //OSSCH_END
+    //OSSCH_START 28da4314-2812-4009-b702-98a373f68675 //OSSCH_END
 
     private async Task GetCloudPreset()
     {
@@ -720,6 +733,7 @@
             update_servers = Configuration.Web_Console.agentConfigurationConnectionString;
             trust_servers = Configuration.Web_Console.agentConfigurationConnectionString;
             file_servers = Configuration.Web_Console.agentConfigurationConnectionString;
+            relay_servers = Configuration.Web_Console.agentConfigurationConnectionString;
         }
     }
 
@@ -833,6 +847,7 @@ Write-Host ""NetLock RMM Agent installation process completed!"" -ForegroundColo
 # NetLock RMM Agent Installation Script for Linux
 # This script downloads and installs the NetLock RMM Agent
 
+(
 PACKAGE_URL=""{installer_url}""
 SERVICE_NAME=""netlock-rmm-agent-comm""
 
@@ -883,9 +898,15 @@ fi
 echo ""Extracting package to $EXTRACT_FOLDER...""
 
 # Check if unzip is available
+# Check if unzip is available, install if not
 if ! command -v unzip &> /dev/null; then
-    echo ""Error: unzip is not installed. Please install unzip first.""
-    exit 1
+    echo ""unzip is not installed. Installing unzip...""
+    apt update && apt install -y unzip
+    if [ $? -ne 0 ]; then
+        echo ""Error: Failed to install unzip.""
+        exit 1
+    fi
+    echo ""unzip installed successfully.""
 fi
 
 # Remove existing extract folder if it exists
@@ -927,7 +948,11 @@ rm -f ""$ZIP_FILE""
 rm -rf ""$EXTRACT_FOLDER""
 echo ""Cleanup completed.""
 
-echo ""NetLock RMM Agent installation process completed!""";
+echo ""NetLock RMM Agent installation process completed!""
+)
+
+echo """"
+read -p ""Press Enter to close this window...""";
 
             await JSRuntime.InvokeVoidAsync("exportToTxt", "Install-NetLockAgent.sh", scriptContent);
             
@@ -1043,6 +1068,327 @@ echo ""NetLock RMM Agent installation process completed!""";
             Logging.Handler.Error("/MainLayout -> Download_Installation_Script_MacOS", "Result", ex.ToString());
             Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
             Snackbar.Add("Error creating installation script. Please check the logs.", Severity.Error, config => { config.ShowCloseIcon = true; });
+        }
+    }
+
+    private async Task Show_Config_Replacement_Platform_Dialog()
+    {
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            MaxWidth = MaxWidth.Small,
+            FullWidth = true,
+            BackgroundClass = "dialog-blurring",
+        };
+
+        var dialog = await DialogService.ShowAsync<Layout.Agent_Download.Config_Replacement_Platform_Dialog>("", options);
+        var result = await dialog.Result;
+
+        if (result.Canceled)
+            return;
+
+        // Get the selected platform
+        string platform = result.Data?.ToString() ?? string.Empty;
+
+        if (string.IsNullOrEmpty(platform))
+            return;
+
+        // Download the appropriate script based on platform selection
+        switch (platform.ToLower())
+        {
+            case "windows":
+                await Download_ServerConfig_Replacement_Script_Windows();
+                break;
+            case "linux":
+                await Download_ServerConfig_Replacement_Script_Linux();
+                break;
+            case "macos":
+                await Download_ServerConfig_Replacement_Script_MacOS();
+                break;
+            default:
+                Snackbar.Add("Invalid platform selection.", Severity.Error);
+                break;
+        }
+    }
+
+    private async Task Download_ServerConfig_Replacement_Script_Windows()
+    {
+        try
+        {
+            await Get_Guids();
+
+            // Create the JSON configuration object
+            var jsonObject = new
+            {
+                ssl = ssl,
+                package_guid = package_guid,
+                communication_servers = communication_servers,
+                remote_servers = remote_servers,
+                update_servers = update_servers,
+                trust_servers = trust_servers,
+                file_servers = file_servers,
+                relay_servers = relay_servers,
+                tenant_guid = tenant_guid,
+                location_guid = location_guid,
+                language = language,
+                access_key = String.Empty,
+                authorized = false,
+            };
+
+            // Convert to JSON string with proper escaping for PowerShell
+            string serverConfigJson = JsonSerializer.Serialize(jsonObject, new JsonSerializerOptions { WriteIndented = true });
+            string escapedJson = serverConfigJson.Replace("`", "``").Replace("$", "`$").Replace("\"", "`\"");
+
+            string scriptContent = $@"# NetLock RMM Agent - Server Configuration Replacement Script for Windows
+# This script replaces the complete server_config.json file with a new unencrypted version
+# The agent will automatically encrypt the new configuration file
+# Note: Services are NOT restarted. The agent will use the new configuration after a reboot.
+
+# Check if running as Administrator
+$currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {{
+    Write-Host ""Error: This script must be run as Administrator"" -ForegroundColor Red
+    exit 1
+}}
+
+# Define paths based on agent code
+$configPath = ""$env:ProgramData\0x101 Cyber Security\NetLock RMM\Comm Agent\server_config.json""
+
+# Check if the config file exists
+if (-not (Test-Path -Path $configPath)) {{
+    Write-Host ""Error: NetLock RMM Agent configuration file not found at: $configPath"" -ForegroundColor Red
+    Write-Host ""Please ensure the NetLock RMM Agent is installed."" -ForegroundColor Yellow
+    exit 1
+}}
+
+Write-Host ""NetLock RMM Agent configuration file found."" -ForegroundColor Green
+
+# Create backup of existing configuration
+$backupPath = ""$configPath.backup_$(Get-Date -Format 'yyyyMMdd_HHmmss')""
+Write-Host ""Creating backup of existing configuration to: $backupPath"" -ForegroundColor Cyan
+Copy-Item -Path $configPath -Destination $backupPath -Force
+
+# New server configuration (unencrypted - will be encrypted by agent)
+$newConfig = @""
+{serverConfigJson}
+""@
+
+# Write new configuration
+Write-Host ""Writing new server configuration..."" -ForegroundColor Cyan
+try {{
+    Set-Content -Path $configPath -Value $newConfig -Force -Encoding UTF8
+    Write-Host ""Configuration file replaced successfully."" -ForegroundColor Green
+    Write-Host ""The agent will automatically encrypt this configuration."" -ForegroundColor Cyan
+}} catch {{
+    Write-Host ""Error writing configuration file: $_"" -ForegroundColor Red
+    Write-Host ""Restoring backup..."" -ForegroundColor Yellow
+    Copy-Item -Path $backupPath -Destination $configPath -Force
+    exit 1
+}}
+
+Write-Host ""Server configuration replacement completed successfully!"" -ForegroundColor Green
+Write-Host ""Backup saved to: $backupPath"" -ForegroundColor Cyan
+Write-Host """" -ForegroundColor White
+Write-Host ""IMPORTANT: The agent will use the new configuration after a reboot."" -ForegroundColor Yellow
+Write-Host ""If you want to apply the changes immediately, please restart the NetLock RMM services manually."" -ForegroundColor Yellow";
+
+            await JSRuntime.InvokeVoidAsync("exportToTxt", "Update-NetLockServerConfig.ps1", scriptContent);
+            
+            Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+            Snackbar.Add("Windows server configuration replacement script downloaded successfully.", Severity.Success, config => { config.ShowCloseIcon = true; });
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("/MainLayout -> Download_ServerConfig_Replacement_Script_Windows", "Result", ex.ToString());
+            Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+            Snackbar.Add("Error creating server configuration script. Please check the logs.", Severity.Error, config => { config.ShowCloseIcon = true; });
+        }
+    }
+
+    private async Task Download_ServerConfig_Replacement_Script_Linux()
+    {
+        try
+        {
+            await Get_Guids();
+
+            // Create the JSON configuration object
+            var jsonObject = new
+            {
+                ssl = ssl,
+                package_guid = package_guid,
+                communication_servers = communication_servers,
+                remote_servers = remote_servers,
+                update_servers = update_servers,
+                trust_servers = trust_servers,
+                file_servers = file_servers,
+                relay_servers = relay_servers,
+                tenant_guid = tenant_guid,
+                location_guid = location_guid,
+                language = language,
+                access_key = String.Empty,
+                authorized = false,
+            };
+
+            // Convert to JSON string
+            string serverConfigJson = JsonSerializer.Serialize(jsonObject, new JsonSerializerOptions { WriteIndented = true });
+
+            string scriptContent = $@"#!/bin/bash
+# NetLock RMM Agent - Server Configuration Replacement Script for Linux
+# This script replaces the complete server_config.json file with a new unencrypted version
+# The agent will automatically encrypt the new configuration file
+# Note: Services are NOT restarted. The agent will use the new configuration after a reboot.
+
+# Check if running as root
+if [ ""$EUID"" -ne 0 ]; then
+    echo ""Error: This script must be run as root (use sudo)""
+    exit 1
+fi
+
+# Define paths based on agent code
+CONFIG_PATH=""/var/0x101 Cyber Security/NetLock RMM/Comm Agent/server_config.json""
+
+# Check if the config file exists
+if [ ! -f ""$CONFIG_PATH"" ]; then
+    echo ""Error: NetLock RMM Agent configuration file not found at: $CONFIG_PATH""
+    echo ""Please ensure the NetLock RMM Agent is installed.""
+    exit 1
+fi
+
+echo ""NetLock RMM Agent configuration file found.""
+
+# Create backup of existing configuration
+BACKUP_PATH=""${{CONFIG_PATH}}.backup_$(date +'%Y%m%d_%H%M%S')""
+echo ""Creating backup of existing configuration to: $BACKUP_PATH""
+cp ""$CONFIG_PATH"" ""$BACKUP_PATH""
+
+# New server configuration (unencrypted - will be encrypted by agent)
+cat > ""$CONFIG_PATH"" << 'EOF'
+{serverConfigJson}
+EOF
+
+if [ $? -eq 0 ]; then
+    echo ""Configuration file replaced successfully.""
+    echo ""The agent will automatically encrypt this configuration.""
+else
+    echo ""Error writing configuration file.""
+    echo ""Restoring backup...""
+    cp ""$BACKUP_PATH"" ""$CONFIG_PATH""
+    exit 1
+fi
+
+echo ""Server configuration replacement completed successfully!""
+echo ""Backup saved to: $BACKUP_PATH""
+echo """"
+echo ""IMPORTANT: The agent will use the new configuration after a reboot.""
+echo ""If you want to apply the changes immediately, please restart the NetLock RMM services manually:""
+echo ""  systemctl restart netlock-rmm-agent-comm""
+echo ""  systemctl restart netlock-rmm-health""";
+
+            await JSRuntime.InvokeVoidAsync("exportToTxt", "update-netlock-server-config.sh", scriptContent);
+            
+            Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+            Snackbar.Add("Linux server configuration replacement script downloaded successfully.", Severity.Success, config => { config.ShowCloseIcon = true; });
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("/MainLayout -> Download_ServerConfig_Replacement_Script_Linux", "Result", ex.ToString());
+            Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+            Snackbar.Add("Error creating server configuration script. Please check the logs.", Severity.Error, config => { config.ShowCloseIcon = true; });
+        }
+    }
+
+    private async Task Download_ServerConfig_Replacement_Script_MacOS()
+    {
+        try
+        {
+            await Get_Guids();
+
+            // Create the JSON configuration object
+            var jsonObject = new
+            {
+                ssl = ssl,
+                package_guid = package_guid,
+                communication_servers = communication_servers,
+                remote_servers = remote_servers,
+                update_servers = update_servers,
+                trust_servers = trust_servers,
+                file_servers = file_servers,
+                relay_servers = relay_servers,
+                tenant_guid = tenant_guid,
+                location_guid = location_guid,
+                language = language,
+                access_key = String.Empty,
+                authorized = false,
+            };
+
+            // Convert to JSON string
+            string serverConfigJson = JsonSerializer.Serialize(jsonObject, new JsonSerializerOptions { WriteIndented = true });
+
+            string scriptContent = $@"#!/bin/zsh
+# NetLock RMM Agent - Server Configuration Replacement Script for macOS
+# This script replaces the complete server_config.json file with a new unencrypted version
+# The agent will automatically encrypt the new configuration file
+# Note: Services are NOT restarted. The agent will use the new configuration after a reboot.
+
+# Check if running as root
+if [ ""$EUID"" -ne 0 ]; then
+    echo ""Error: This script must be run as root (use sudo)""
+    exit 1
+fi
+
+# Define paths based on agent code
+CONFIG_PATH=""/Library/Application Support/0x101 Cyber Security/NetLock RMM/Comm Agent/server_config.json""
+
+# Check if the config file exists
+if [ ! -f ""$CONFIG_PATH"" ]; then
+    echo ""Error: NetLock RMM Agent configuration file not found at: $CONFIG_PATH""
+    echo ""Please ensure the NetLock RMM Agent is installed.""
+    exit 1
+fi
+
+echo ""NetLock RMM Agent configuration file found.""
+
+# Create backup of existing configuration
+BACKUP_PATH=""${{CONFIG_PATH}}.backup_$(date +'%Y%m%d_%H%M%S')""
+echo ""Creating backup of existing configuration to: $BACKUP_PATH""
+cp ""$CONFIG_PATH"" ""$BACKUP_PATH""
+
+# Read existing configuration and update only server fields
+echo ""Replacing server configuration file...""
+
+# New server configuration (unencrypted - will be encrypted by agent)
+cat > ""$CONFIG_PATH"" << 'EOF'
+{serverConfigJson}
+EOF
+
+if [ $? -eq 0 ]; then
+    echo ""Configuration file replaced successfully.""
+    echo ""The agent will automatically encrypt this configuration.""
+else
+    echo ""Error writing configuration file.""
+    echo ""Restoring backup...""
+    cp ""$BACKUP_PATH"" ""$CONFIG_PATH""
+    exit 1
+fi
+
+echo ""Server configuration replacement completed successfully!""
+echo ""Backup saved to: $BACKUP_PATH""
+echo """"
+echo ""IMPORTANT: The agent will use the new configuration after a reboot.""
+echo ""If you want to apply the changes immediately, please restart the NetLock RMM services manually:""
+echo ""  launchctl stop netlock-rmm-agent-comm""
+echo ""  launchctl start netlock-rmm-agent-comm""";
+
+            await JSRuntime.InvokeVoidAsync("exportToTxt", "update-netlock-server-config.sh", scriptContent);
+            
+            Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+            Snackbar.Add("macOS server configuration replacement script downloaded successfully.", Severity.Success, config => { config.ShowCloseIcon = true; });
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("/MainLayout -> Download_ServerConfig_Replacement_Script_MacOS", "Result", ex.ToString());
+            Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+            Snackbar.Add("Error creating server configuration script. Please check the logs.", Severity.Error, config => { config.ShowCloseIcon = true; });
         }
     }
 

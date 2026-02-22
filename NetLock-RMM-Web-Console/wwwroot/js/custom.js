@@ -233,7 +233,138 @@
         }
     };
 
+    window.uploadJsonFile = function () {
+        return new Promise((resolve, reject) => {
+            try {
+                // Create a file input element
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json,application/json';
+                input.style.display = 'none';
+
+                // Handle file selection
+                input.onchange = function(event) {
+                    try {
+                        const file = event.target.files[0];
+                        
+                        if (!file) {
+                            resolve('');
+                            return;
+                        }
+
+                        // Validate file type
+                        if (!file.name.endsWith('.json') && file.type !== 'application/json') {
+                            console.error('Invalid file type. Only JSON files are allowed.');
+                            reject(new Error('Invalid file type'));
+                            return;
+                        }
+
+                        // Validate file size (max 10MB for JSON)
+                        if (file.size > 10 * 1024 * 1024) {
+                            console.error('File size exceeds maximum allowed size (10MB)');
+                            reject(new Error('File too large'));
+                            return;
+                        }
+
+                        // Read file content
+                        const reader = new FileReader();
+                        
+                        reader.onload = function(e) {
+                            try {
+                                const content = e.target.result;
+                                
+                                // Validate JSON
+                                try {
+                                    JSON.parse(content);
+                                } catch (jsonError) {
+                                    console.error('Invalid JSON format:', jsonError);
+                                    reject(new Error('Invalid JSON'));
+                                    return;
+                                }
+                                
+                                resolve(content);
+                            } catch (error) {
+                                console.error('Error reading file:', error);
+                                reject(error);
+                            } finally {
+                                // Cleanup
+                                if (input.parentNode) {
+                                    document.body.removeChild(input);
+                                }
+                            }
+                        };
+
+                        reader.onerror = function(error) {
+                            console.error('FileReader error:', error);
+                            reject(error);
+                            if (input.parentNode) {
+                                document.body.removeChild(input);
+                            }
+                        };
+
+                        reader.readAsText(file);
+                    } catch (error) {
+                        console.error('Error in file change handler:', error);
+                        reject(error);
+                        if (input.parentNode) {
+                            document.body.removeChild(input);
+                        }
+                    }
+                };
+
+                input.oncancel = function() {
+                    resolve('');
+                    if (input.parentNode) {
+                        document.body.removeChild(input);
+                    }
+                };
+
+                // Add to DOM and trigger click
+                document.body.appendChild(input);
+                input.click();
+
+            } catch (error) {
+                console.error('Error in uploadJsonFile:', error);
+                reject(error);
+            }
+        });
+    };
+
 })();
+
+window.downloadFileFromBytes = function (filename, contentType, byteArray) {
+    try {
+        if (!filename || typeof filename !== 'string') {
+            console.error('Invalid filename');
+            return;
+        }
+
+        if (!byteArray || !byteArray.length) {
+            console.error('Invalid byte array');
+            return;
+        }
+
+        // Create blob from byte array
+        const blob = new Blob([byteArray], { type: contentType || 'application/octet-stream' });
+        
+        // Create download link
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        
+        // Trigger download
+        document.body.appendChild(link);
+        link.click();
+        
+        // Cleanup
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
+    } catch (error) {
+        console.error('Error downloading file:', error);
+    }
+};
 
 window.isMobileDevice = function () {
     try {

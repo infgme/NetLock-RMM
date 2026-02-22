@@ -120,11 +120,14 @@
         <MudTextField Label="Contact" T="string" @bind-Value="@contact" Required="false" RequiredError="Required" Immediate="@true" ReadOnly="true" />
 
         @{
+            bool editorRendered = false;
+            
             if (platform == "Windows")
             {
                 if (shell == "PowerShell")
                 {
                     <StandaloneCodeEditor Id="powershell-editor" CssClass="monaco-editor" @ref="script_editor" ConstructionOptions="PowerShell_Editor_Construction_Options" OnDidChangeModelContent="Editor_Handle_Input" />
+                    editorRendered = true;
                 }
             }
             else if (platform == "System")
@@ -132,6 +135,7 @@
                 if (shell == "MySQL")
                 {
                     <StandaloneCodeEditor Id="powershell-editor" CssClass="monaco-editor" @ref="script_editor" ConstructionOptions="MySQL_Editor_Construction_Options" OnDidChangeModelContent="Editor_Handle_Input" />
+                    editorRendered = true;
                 }
             }
             else if (platform == "Linux")
@@ -139,6 +143,7 @@
                 if (shell == "Bash")
                 {
                     <StandaloneCodeEditor Id="powershell-editor" CssClass="monaco-editor" @ref="script_editor" ConstructionOptions="Shell_Editor_Construction_Options" OnDidChangeModelContent="Editor_Handle_Input" />
+                    editorRendered = true;
                 }
             }
             else if (platform == "MacOS")
@@ -146,7 +151,14 @@
                 if (shell == "Zsh")
                 {
                     <StandaloneCodeEditor Id="powershell-editor" CssClass="monaco-editor" @ref="script_editor" ConstructionOptions="Shell_Editor_Construction_Options" OnDidChangeModelContent="Editor_Handle_Input" />
+                    editorRendered = true;
                 }
+            }
+            
+            // Fallback editor for unsupported platform/shell combinations
+            if (!editorRendered)
+            {
+                <StandaloneCodeEditor Id="powershell-editor" CssClass="monaco-editor" @ref="script_editor" ConstructionOptions="Shell_Editor_Construction_Options" OnDidChangeModelContent="Editor_Handle_Input" />
             }
         }
 
@@ -168,6 +180,7 @@
 @code {
 
     private bool loading_overlay = false;
+    private string decodedScript = String.Empty;
 
     [CascadingParameter]
     private IMudDialogInstance MudDialog { get; set; } = default!;
@@ -187,6 +200,19 @@
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
+        
+        // Decode script before first render so it's available for ConstructionOptions
+        try
+        {
+            if (!string.IsNullOrEmpty(script))
+            {
+                decodedScript = await Base64.Handler.Decode(script);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("View_Dialog.OnInitializedAsync", "Error decoding script", ex.ToString());
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -198,7 +224,7 @@
     }
 
     private async Task AfterInitializedAsync()
-    {
+    { 
         // Get the current user from the authentication state
         var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
 
@@ -208,9 +234,7 @@
             NavigationManager.NavigateTo("/login", true);
             return;
         }
-
-        await script_editor.SetValue(await Base64.Handler.Decode(script));
-
+        
         StateHasChanged();
     } 
 
@@ -234,7 +258,7 @@
 		    AutomaticLayout = true,
             Theme = "vs-dark",
 		    Language = "powershell",
-            //Value = @"New-Item -ItemType File -Path 'C:\Test.txt\' | Set-Content -Value 'Dies ist ein Test'"
+            Value = decodedScript
 	    };
     }
 
@@ -245,7 +269,7 @@
                 AutomaticLayout = true,
                 Theme = "vs-dark",
                 Language = "mysql",
-            //Value = @"New-Item -ItemType File -Path 'C:\Test.txt\' | Set-Content -Value 'Dies ist ein Test'"
+                Value = decodedScript
             };
     }
 
@@ -256,7 +280,7 @@
 		    AutomaticLayout = true,
             Theme = "vs-dark",
 		    Language = "shell",
-            //Value = @"New-Item -ItemType File -Path 'C:\Test.txt\' | Set-Content -Value 'Dies ist ein Test'"
+            Value = decodedScript
 	    };
     }
 
@@ -407,7 +431,7 @@
                 };
 
             var parameters = new DialogParameters();
-            var dialog = DialogService.Show<Pages.Collections.Scripts.Community_Scripts.Report_Dialog>("Report script", parameters, options);
+            var dialog = await DialogService.ShowAsync<Pages.Collections.Scripts.Community_Scripts.Report_Dialog>("Report script", parameters, options);
 
             var messageResult = await dialog.Result;
             string reason = String.Empty;

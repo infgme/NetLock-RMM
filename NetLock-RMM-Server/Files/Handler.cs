@@ -1,4 +1,4 @@
-﻿using MySqlConnector;
+using MySqlConnector;
 using NetLock_RMM_Server;
 using NetLock_RMM_Server.MySQL;
 using System;
@@ -648,108 +648,6 @@ namespace NetLock_RMM_Server.Files
             return guid;
         }
 
-        public static async Task<string> Create_Custom_Installer(string name, string json)
-        {
-            try
-            {
-                // Remove .zip from the name
-                name = name.Replace(".zip", "");
-                string architecture = String.Empty;
-
-                string installer_archive = String.Empty;
-                string installer_extracted_dir = Path.Combine(Application_Paths.internal_temp_dir, Guid.NewGuid().ToString());
-                string installer_packed_dir = Path.Combine(Application_Paths.internal_temp_dir, Guid.NewGuid().ToString());
-                string installer_executable = String.Empty;
-
-                byte[] installer_package_bytes = null;
-
-                // Deserialize JSON
-                using (JsonDocument document = JsonDocument.Parse(json))
-                {
-                    JsonElement architecture_element = document.RootElement.GetProperty("architecture");
-                    architecture = architecture_element.ToString();
-                }
-
-                // Check the architecture
-                if (architecture == "win-x64")
-                    installer_package_bytes = Configuration.Members_Portal.installer_package_win_x64_zip_bytestream;
-                else if (architecture == "win-arm64")
-                    installer_package_bytes = Configuration.Members_Portal.installer_package_win_arm64_zip_bytestream;
-                else if (architecture == "linux-x64")
-                    installer_package_bytes = Configuration.Members_Portal.installer_package_linux_x64_zip_bytestream;
-                else if (architecture == "linux-arm64")
-                    installer_package_bytes = Configuration.Members_Portal.installer_package_linux_arm64_zip_bytestream;
-                else if (architecture == "osx-x64")
-                    installer_package_bytes = Configuration.Members_Portal.installer_package_osx_x64_zip_bytestream;
-                else if (architecture == "osx-arm64")
-                    installer_package_bytes = Configuration.Members_Portal.installer_package_osx_arm64_zip_bytestream;
-                else
-                    return string.Empty;
-
-                // Extract installer.package to temp folder 
-                if (installer_package_bytes == null)
-                    return string.Empty;
-
-                // Entpacken aus MemoryStream
-                Directory.CreateDirectory(installer_extracted_dir);
-                using (MemoryStream zipStream = new MemoryStream(installer_package_bytes))
-                using (ZipArchive archive = new ZipArchive(zipStream))
-                {
-                    archive.ExtractToDirectory(installer_extracted_dir);
-                }
-                
-                // Delete all files in installer_extracted_dir except the installer executable
-                if (Directory.Exists(installer_extracted_dir))
-                {
-                    foreach (string file in Directory.GetFiles(installer_extracted_dir))
-                    {
-                        if (!file.EndsWith("NetLock_RMM_Agent_Installer.exe") && !file.EndsWith("NetLock_RMM_Agent_Installer"))
-                        {
-                            File.Delete(file);
-                        }
-                    }
-                }
-                
-                //Thread.Sleep(20000);
-
-                // Check the architecture
-                if (architecture == "win-x64" || architecture == "win-arm64")
-                    installer_executable = Path.Combine(installer_extracted_dir, "NetLock_RMM_Agent_Installer.exe");
-                else if (architecture == "linux-x64" || architecture == "linux-arm64")
-                    installer_executable = Path.Combine(installer_extracted_dir, "NetLock_RMM_Agent_Installer");
-                else if (architecture == "osx-x64" || architecture == "osx-arm64")
-                    installer_executable = Path.Combine(installer_extracted_dir, "NetLock_RMM_Agent_Installer");
-
-                // Write ressource to the installer
-                await Assembly_Manipulation.Embedd_Server_Config(installer_executable, json);
-
-                string new_installer_package = Path.Combine(installer_packed_dir, name + ".zip");
-
-                // Check if the directory exists
-                if (!Directory.Exists(installer_packed_dir))
-                    Directory.CreateDirectory(installer_packed_dir);
-
-                // Package the installer
-                ZipFile.CreateFromDirectory(installer_extracted_dir, new_installer_package);
-
-                string installer_download_location = Path.Combine(Application_Paths._private_files_netlock_temp, name + "-" + architecture + ".zip");
-
-                // Copy the packed installer to the private files directory
-                File.Copy(new_installer_package, installer_download_location, true);
-
-                // Delete the temp directories
-                Directory.Delete(installer_extracted_dir, true);
-                Directory.Delete(installer_packed_dir, true);
-
-                string register_result = await Register_File(installer_download_location, String.Empty, String.Empty, String.Empty);
-
-                return register_result;
-            }
-            catch (Exception ex)
-            {
-                Logging.Handler.Error("Files.Create_Custom_Installer", "general_error", ex.ToString());
-                return string.Empty;
-            }
-        }
+        //OSSCH_START c0eff9f3-8802-498b-84ac-45944426cc13 //OSSCH_END
     }
 }

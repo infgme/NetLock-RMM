@@ -81,12 +81,17 @@ else
 
 // Public override URL
 if (!String.IsNullOrEmpty(publicOverrideUrl))
+{
     Web_Console.publicOverrideUrl = publicOverrideUrl;
-
-var language = builder.Configuration["Webinterface:Language"];
+    
+    // Will be written to database (settings -> public_override_url)
+    Console.WriteLine("Public Override URL set to: " + Web_Console.publicOverrideUrl);
+}
+    
+var language = builder.Configuration.GetValue<string>("Webinterface:Language", "en-US");
 
 // Check members portal parts
-//OSSCH_START 383bddbe-dfb8-42f4-9393-a59e2207abd8 //OSSCH_END
+//OSSCH_START 4310cce8-ce5d-49e1-b000-298f9ad878cc //OSSCH_END
 Console.WriteLine("---------Loader_End----------");
 
 // Output OS
@@ -155,20 +160,6 @@ Console.WriteLine("[Webinterface]");
 Console.WriteLine($"Language: {language}");
 Console.WriteLine($"Title: {Web_Console.title}");
 Console.WriteLine($"Public Override Domain: {Web_Console.publicOverrideUrl}");
-Console.WriteLine(Environment.NewLine);
-
-// Members Portal Api
-Console.WriteLine("[Members Portal Api]");
-Console.WriteLine($"Api Enabled: {Members_Portal.IsApiEnabled}");
-Console.WriteLine($"Api Key Override: {membersPortal.ApiKeyOverride}");
-Console.WriteLine($"Cloud Enabled: {Members_Portal.IsCloudEnabled}");
-Console.WriteLine($"Agent Configuration Connection String: {Web_Console.agentConfigurationConnectionString}");
-Console.WriteLine($"Server Guid: {Members_Portal.ServerGuid}");
-Console.WriteLine($"License Valid Until: {validUntilStr}");
-Console.WriteLine($"License Package Name: {packageName}");
-Console.WriteLine($"License Max Devices: {licensesMax}");
-Console.WriteLine($"License Hard Limit: {licensesHardLimit}");
-Console.WriteLine($"Code Signed: {Members_Portal.IsCodeSigned}");
 Console.WriteLine(Environment.NewLine);
 
 // Logging
@@ -271,16 +262,19 @@ else
                 Console.WriteLine("Members Portal API key loaded from database: " + Members_Portal.ApiKey);
             }
             else
-                await NetLock_RMM_Web_Console.Classes.Members_Portal.Handler.Set_Api_Key(Members_Portal.ApiKey);
+                await NetLock_RMM_Web_Console.Classes.Members_Portal.Handler.SetApiKey(Members_Portal.ApiKey);
 
+            // Add licensse service as hosted service
+            builder.Services.AddHostedService<NetLock_RMM_Web_Console.Classes.Members_Portal.Members_Portal_License_Service>();
+            
             // Do cloud stuff
             if (Members_Portal.IsCloudEnabled)
             {
                 // Enforce cloud settings
                 await Database.EnforceCloudSettings();
-                
+
                 Console.WriteLine("Cloud enabled. Checking cloud connection...");
-                if (await NetLock_RMM_Web_Console.Classes.Members_Portal.Handler.Check_Connection())
+                if (await NetLock_RMM_Web_Console.Classes.Members_Portal.Handler.CheckConnection())
                 {
                     Console.ForegroundColor = ConsoleColor.Green;
                     Console.WriteLine("Cloud connection successful.");
@@ -289,22 +283,22 @@ else
                 else
                 {
                     Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine("Cloud connection failed. Please check your internet connection or firewall settings.");
+                    Console.WriteLine(
+                        "Cloud connection failed. Please check your internet connection or firewall settings.");
                     Console.ResetColor();
                 }
             }
-            
-            // Update license info
-            await NetLock_RMM_Web_Console.Classes.Members_Portal.Handler.Request_License_Info_Json(Members_Portal.ApiKey);
         }
         
-        //OSSCH_START 54f54f01-0242-4acd-a29f-5e24ddcc6ab1 //OSSCH_END
-        
+        //OSSCH_START b28a9304-475a-418f-bcf2-0e9f42416bce //OSSCH_END
+
         // Load IP Whitelist from database
         try
         {
-            string ipWhitelistJson = await NetLock_RMM_Web_Console.Classes.MySQL.Handler.Quick_Reader("SELECT * FROM settings", "ip_whitelist_web_console");
-            
+            string ipWhitelistJson =
+                await NetLock_RMM_Web_Console.Classes.MySQL.Handler.Quick_Reader("SELECT * FROM settings",
+                    "ip_whitelist_web_console");
+
             if (!string.IsNullOrEmpty(ipWhitelistJson))
             {
                 var ipList = System.Text.Json.JsonSerializer.Deserialize<List<string>>(ipWhitelistJson);
@@ -344,116 +338,7 @@ builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 
 // SSO Configuration
 Console.WriteLine(Environment.NewLine);
-//OSSCH_START
-Console.WriteLine("[SSO Configuration]");
-Console.WriteLine("Loading SSO configuration from database...");
-
-// Load SSO configuration from database instead of appsettings.json
-var ssoConfig = await NetLock_RMM_Web_Console.Classes.MySQL.Handler.Get_Sso_Config();
-
-if (ssoConfig == null)
-{
-    Console.WriteLine("No SSO configuration found in database. SSO is disabled.");
-    ssoConfig = new NetLock_RMM_Web_Console.Classes.Authentication.SsoConfig { Enabled = false };
-}
-else
-{
-    Console.WriteLine("SSO configuration loaded from database successfully.");
-}
-
-if (ssoConfig.Enabled)
-{
-    Sso.IsEnabled = true;
-    
-    // Check which providers are enabled
-    if (ssoConfig.AzureAd?.Enabled == true)
-    {
-        Sso.IsAzureAdEnabled = true;
-        Console.WriteLine("SSO: Azure AD (Microsoft Entra ID) enabled");
-    }
-    
-    if (ssoConfig.Keycloak?.Enabled == true)
-    {
-        Sso.IsKeycloakEnabled = true;
-        Console.WriteLine("SSO: Keycloak enabled");
-    }
-    
-    if (ssoConfig.GoogleIdentity?.Enabled == true)
-    {
-        Sso.isGoogleIdentityEnabled = true;
-        Console.WriteLine("SSO: Google Workspace / Google Identity enabled");
-    }
-    
-    if (ssoConfig.Okta?.Enabled == true)
-    {
-        Sso.IsOktaEnabled = true;
-        Console.WriteLine("SSO: Okta enabled");
-    }
-    
-    if (ssoConfig.Auth0?.Enabled == true)
-    {
-        Sso.IsAuth0Enabled = true;
-        Console.WriteLine("SSO: Auth0 enabled");
-    }
-    
-    if (Sso.IsAzureAdEnabled || Sso.IsKeycloakEnabled || Sso.isGoogleIdentityEnabled || Sso.IsOktaEnabled || Sso.IsAuth0Enabled)
-    {
-        try
-        {
-            Console.WriteLine("SSO is enabled. Registering SSO authentication providers...");
-            AuthProviderRegistrar.RegisterSsoProviders(builder.Services, ssoConfig);
-        }
-        catch (Exception ex)
-        {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine("========================================");
-            Console.WriteLine("ERROR: Failed to register SSO providers!");
-            Console.WriteLine("========================================");
-            Console.WriteLine($"Error: {ex.Message}");
-            Console.WriteLine(Environment.NewLine);
-            Console.WriteLine("SSO configuration appears to be invalid or incomplete.");
-            Console.WriteLine("Common issues:");
-            Console.WriteLine("  - Missing required fields (ClientId, ClientSecret, Domain, etc.)");
-            Console.WriteLine("  - Invalid URLs or endpoints");
-            Console.WriteLine("  - Incorrect certificate configuration");
-            Console.WriteLine(Environment.NewLine);
-            Console.WriteLine("The application will continue running with SSO DISABLED.");
-            Console.WriteLine("Please check your SSO configuration in the database and restart the application.");
-            Console.WriteLine("========================================");
-            Console.ResetColor();
-            
-            // Log the error
-            Logging.Handler.Error("SSO Configuration", "Provider Registration Failed", ex.ToString());
-            
-            // Set error flag and message
-            Sso.ConfigurationError = true;
-            Sso.ConfigurationErrorMessage = ex.Message;
-            
-            // Disable SSO flags
-            Sso.IsEnabled = false;
-            Sso.IsAzureAdEnabled = false;
-            Sso.IsKeycloakEnabled = false;
-            Sso.isGoogleIdentityEnabled = false;
-            Sso.IsOktaEnabled = false;
-            Sso.IsAuth0Enabled = false;
-            
-            // Fall back to default authentication
-            builder.Services.AddAuthenticationCore();
-        }
-    }
-    else
-    {
-        Console.WriteLine("SSO is enabled in config but no providers are configured. Using default authentication core.");
-        builder.Services.AddAuthenticationCore();
-    }
-}
-else
-{
-    Console.WriteLine("SSO is disabled. Using default authentication core.");
-    builder.Services.AddAuthenticationCore();
-}
-Console.WriteLine(Environment.NewLine);
-//OSSCH_END
+//OSSCH_START 7c223bbf-c320-4198-8382-9f9421709999 //OSSCH_END
 
 // Blazor and core services
 builder.Services.AddBlazoredLocalStorage();
@@ -476,8 +361,9 @@ builder.Services.AddScoped<ProtectedSessionStorage>();
 builder.Services.AddOptions();
 builder.Services.AddLocalization();
 builder.Services.AddSingleton<MudBlazor.MudThemeProvider>();
+builder.Services.AddSingleton<TenantUpdateService>();
+builder.Services.AddSingleton<NetLock_RMM_Web_Console.Classes.Theme.ThemeUpdateService>();
 builder.Services.AddMvc();
-
 
 // Configure form options to increase the maximum upload file size limit to 150 MB
 builder.Services.Configure<FormOptions>(options =>
@@ -518,7 +404,8 @@ var knownProxiesStrings = builder.Configuration.GetSection("Kestrel:KnownProxies
 
 var forwardedHeadersOptions = new ForwardedHeadersOptions
 {
-    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost,
+    RequireHeaderSymmetry = false
 };
 
 bool hasValidProxy = false;
@@ -613,17 +500,13 @@ app.UseStaticFiles();
 app.UseAntiforgery();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
-//OSSCH_START 8da1e227-8ff8-42be-96d2-51f5cf5407f5 //OSSCH_END
-
-Console.WriteLine("---------Loader_End----------");
-
 Console.WriteLine(Environment.NewLine);
 Console.WriteLine("Server started.");
 
 // SSO Challenge Endpoints
-if (Sso.IsEnabled && Members_Portal.IsCodeSigned)
+if (Sso.IsEnabled && NetLock_RMM_Web_Console.Classes.Members_Portal.License.CodeSigned)
 {
-    //OSSCH_START 005eb6a8-4538-41a8-8cc1-924dcd0f9075 //OSSCH_END
+    //OSSCH_START 45f689e3-118a-471f-90ee-137810dfce34 //OSSCH_END
 
 // Test endpoint
 app.MapGet("/test", async context =>
@@ -633,9 +516,9 @@ app.MapGet("/test", async context =>
 });
 
 // Members Portal Api Cloud Version Endpoints
-if (Members_Portal.IsApiEnabled && Members_Portal.IsCloudEnabled)
+if (Members_Portal.IsCloudEnabled)
 {
-    //OSSCH_START c5623f1f-d791-43d2-816e-e8a7393ec95b //OSSCH_END
+    //OSSCH_START cd0cae8a-5b97-4cc2-a09f-aec2b93b2a1d //OSSCH_END
 }
 
 // Start server

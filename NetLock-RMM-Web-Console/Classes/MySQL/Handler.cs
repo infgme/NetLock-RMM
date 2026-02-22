@@ -88,6 +88,117 @@ namespace NetLock_RMM_Web_Console.Classes.MySQL
                 await conn.CloseAsync();
             }
         }
+        
+        public static async Task<bool> Execute_Command_Batch(string batchQuery)
+        {
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            int successCount = 0;
+            int errorCount = 0;
+
+            try
+            {
+                await conn.OpenAsync();
+
+                // Split the batch query into individual SQL statements
+                var statements = SplitSqlStatements(batchQuery);
+
+                foreach (var statement in statements)
+                {
+                    if (string.IsNullOrWhiteSpace(statement))
+                        continue;
+
+                    var trimmedStatement = statement.Trim();
+
+                    try
+                    {
+                        // Execute each statement individually
+                        using (MySqlCommand cmd = new MySqlCommand(trimmedStatement, conn))
+                        {
+                            cmd.CommandTimeout = 300; // 5 minutes timeout
+                            await cmd.ExecuteNonQueryAsync();
+                        }
+                        
+                        successCount++;
+                        Logging.Handler.Debug("Classes.MySQL.Handler.Execute_Command_Batch", 
+                            "Success", $"Statement executed: {trimmedStatement.Substring(0, Math.Min(100, trimmedStatement.Length))}...");
+                    }
+                    catch (Exception ex)
+                    {
+                        errorCount++;
+                        // Log the error but continue with next statement
+                        Logging.Handler.Error("Classes.MySQL.Handler.Execute_Command_Batch", 
+                            "Skipped", $"Error executing statement (continuing): {ex.Message}\nStatement: {trimmedStatement.Substring(0, Math.Min(100, trimmedStatement.Length))}...");
+                    }
+                }
+
+                Logging.Handler.Debug("Classes.MySQL.Handler.Execute_Command_Batch", 
+                    "Complete", $"Batch execution completed. Success: {successCount}, Errors: {errorCount}");
+                
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logging.Handler.Error("Classes.MySQL.Handler.Execute_Command_Batch", "Fatal Error", ex.ToString());
+                return false;
+            }
+            finally
+            {
+                if (conn.State == ConnectionState.Open)
+                    await conn.CloseAsync();
+            }
+        }
+
+        private static List<string> SplitSqlStatements(string sql)
+        {
+            var statements = new List<string>();
+            var currentStatement = new System.Text.StringBuilder();
+            bool inString = false;
+            char stringDelimiter = '\0';
+
+            for (int i = 0; i < sql.Length; i++)
+            {
+                char c = sql[i];
+
+                // Handle string literals
+                if ((c == '\'' || c == '"') && (i == 0 || sql[i - 1] != '\\'))
+                {
+                    if (!inString)
+                    {
+                        inString = true;
+                        stringDelimiter = c;
+                    }
+                    else if (c == stringDelimiter)
+                    {
+                        inString = false;
+                    }
+                }
+
+                // Check for statement delimiter
+                if (c == ';' && !inString)
+                {
+                    currentStatement.Append(c);
+                    var stmt = currentStatement.ToString().Trim();
+                    if (!string.IsNullOrWhiteSpace(stmt))
+                    {
+                        statements.Add(stmt);
+                    }
+                    currentStatement.Clear();
+                }
+                else
+                {
+                    currentStatement.Append(c);
+                }
+            }
+
+            // Add the last statement if any
+            var lastStmt = currentStatement.ToString().Trim();
+            if (!string.IsNullOrWhiteSpace(lastStmt))
+            {
+                statements.Add(lastStmt);
+            }
+
+            return statements;
+        }
 
         public static async Task<string> Quick_Reader(string query, string item)
         {
@@ -640,6 +751,46 @@ namespace NetLock_RMM_Web_Console.Classes.MySQL
             }
         }
 
+        // Get device access key by device id
+        public static async Task<string> GetDeviceAccessKeyById(string device_id)
+        {
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+
+            try
+            {
+                string query = "SELECT access_key FROM devices WHERE id = @device_id;";
+
+                MySqlCommand command = new MySqlCommand(query, conn);
+                command.Parameters.AddWithValue("@device_id", device_id);
+                
+                Logging.Handler.Debug("MySQL.Handler.GetDeviceAccessKeyById", "MySQL_Prepared_Query", query);
+
+                await conn.OpenAsync();
+                
+                using (DbDataReader reader = await command.ExecuteReaderAsync())
+                {
+                    if (reader.HasRows)
+                    {
+                        while (await reader.ReadAsync())
+                        {
+                            return reader["access_key"].ToString() ?? string.Empty;
+                        }
+                    }
+                }
+
+                return String.Empty;
+            }
+            catch (Exception ex)
+            {
+                Logging.Handler.Error("MySQL.Handler.GetDeviceAccessKeyById", "MySQL_Query", ex.ToString());
+                return String.Empty;
+            }
+            finally
+            {
+                await conn.CloseAsync();
+            }
+        }
+
         // Get location name by device id
         public static async Task<string> Get_Location_Name_By_Device_Id(string device_id)
         {
@@ -800,8 +951,35 @@ namespace NetLock_RMM_Web_Console.Classes.MySQL
         }
 
         // Get SSO Configuration from database
-        //OSSCH_START 7831177c-ff42-45ad-ac05-18ad422c2c67 //OSSCH_END
+        //OSSCH_START e879e937-2fce-482d-9585-7b6219bcb7f9 //OSSCH_END
         
-        
+        // Set public override url (settings table) 
+        public static async Task<bool> SetPublicOverrideUrl(string url)
+        {
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+
+            try
+            {
+                await conn.OpenAsync();
+
+                string query = "UPDATE settings SET public_override_url = @url;";
+
+                MySqlCommand cmd = new MySqlCommand(query, conn);
+                cmd.Parameters.AddWithValue("@url", url);
+                cmd.ExecuteNonQuery();
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logging.Handler.Error("Classes.MySQL.Handler.Set_Public_Override_Url", "Result", ex.ToString());
+                return false;
+            }
+            finally
+            {
+                await conn.CloseAsync();
+            }
+        }
     }
 }
+

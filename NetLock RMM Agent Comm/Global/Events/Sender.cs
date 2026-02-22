@@ -146,6 +146,7 @@ namespace Global.Events
                                     update_servers = Configuration.Agent.update_servers,
                                     trust_servers = Configuration.Agent.trust_servers,
                                     file_servers = Configuration.Agent.file_servers,
+                                    relay_servers = Configuration.Agent.relay_servers,
                                     tenant_guid = Configuration.Agent.tenant_guid,
                                     location_guid = Configuration.Agent.location_guid,
                                     access_key = Device_Worker.access_key,

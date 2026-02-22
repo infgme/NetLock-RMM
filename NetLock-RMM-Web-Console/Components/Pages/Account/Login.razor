@@ -28,6 +28,7 @@
 @using Microsoft.AspNetCore.Http
 @using Microsoft.Extensions.Localization
 @using Microsoft.JSInterop
+@using NetLock_RMM_Web_Console.Classes.Security
 
 @inject NavigationManager NavigationManager
 @inject ILocalStorageService localStorage
@@ -50,7 +51,7 @@
         display: flex;
         justify-content: center;
         align-items: center;
-        background: linear-gradient(135deg, hsl(218deg 50% 91%) 0%, hsl(213deg 85% 97%) 100%);
+        background: linear-gradient(135deg, hsl(0deg 0% 12%) 0%, hsl(0deg 0% 18%) 100%);
         padding: 2rem;
         flex-direction: column;
         position: fixed;
@@ -85,12 +86,12 @@
     }
 
     .screen-1 {
-        background: hsl(213deg 85% 97%);
+        background: hsl(0deg 0% 18%);
         padding: 3em 2.5em;
         display: flex;
         flex-direction: column;
         border-radius: 30px;
-        box-shadow: 0 0 3em hsl(231deg 62% 94%);
+        box-shadow: 0 0 3em rgba(0, 0, 0, 0.5);
         gap: 2em;
         max-width: 420px;
         width: 100%;
@@ -327,23 +328,19 @@
         width: 200px;
         height: auto;
         filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
-        animation: bloodPulse 3.5s ease-in-out infinite;
+        animation: bloodPulseDark 3.5s ease-in-out infinite;
     }
 
     /* Pulsating Red Glow Animation */
     @@keyframes bloodPulse {
         0% {
-            filter: drop-shadow(0 0 5px rgba(145, 0, 18, 0.3)) 
-                    drop-shadow(0 0 10px rgba(145, 0, 18, 0.2));
+            filter: drop-shadow(0 0 5px rgba(145, 0, 18, 0.3)) drop-shadow(0 0 10px rgba(145, 0, 18, 0.2));
         }
         50% {
-            filter: drop-shadow(0 0 20px rgba(220, 20, 60, 0.8)) 
-                    drop-shadow(0 0 40px rgba(220, 20, 60, 0.5))
-                    drop-shadow(0 0 60px rgba(145, 0, 18, 0.3));
+            filter: drop-shadow(0 0 20px rgba(220, 20, 60, 0.8)) drop-shadow(0 0 40px rgba(220, 20, 60, 0.5)) drop-shadow(0 0 60px rgba(145, 0, 18, 0.3));
         }
         100% {
-            filter: drop-shadow(0 0 5px rgba(145, 0, 18, 0.3)) 
-                    drop-shadow(0 0 10px rgba(145, 0, 18, 0.2));
+            filter: drop-shadow(0 0 5px rgba(145, 0, 18, 0.3)) drop-shadow(0 0 10px rgba(145, 0, 18, 0.2));
         }
     }
 
@@ -355,37 +352,33 @@
 
     @@keyframes bloodPulseDark {
         0% {
-            filter: drop-shadow(0 0 8px rgba(220, 20, 60, 0.4)) 
-                    drop-shadow(0 0 15px rgba(220, 20, 60, 0.3));
+            filter: drop-shadow(0 0 8px rgba(220, 20, 60, 0.4)) drop-shadow(0 0 15px rgba(220, 20, 60, 0.3));
         }
         50% {
-            filter: drop-shadow(0 0 30px rgba(255, 50, 70, 1)) 
-                    drop-shadow(0 0 50px rgba(220, 20, 60, 0.7))
-                    drop-shadow(0 0 80px rgba(145, 0, 18, 0.5));
+            filter: drop-shadow(0 0 30px rgba(255, 50, 70, 1)) drop-shadow(0 0 50px rgba(220, 20, 60, 0.7)) drop-shadow(0 0 80px rgba(145, 0, 18, 0.5));
         }
         100% {
-            filter: drop-shadow(0 0 8px rgba(220, 20, 60, 0.4)) 
-                    drop-shadow(0 0 15px rgba(220, 20, 60, 0.3));
+            filter: drop-shadow(0 0 8px rgba(220, 20, 60, 0.4)) drop-shadow(0 0 15px rgba(220, 20, 60, 0.3));
         }
     }
 
     .login-title {
         text-align: center;
-        color: hsl(0deg 0% 25%);
+        color: hsl(0deg 0% 90%);
         font-size: 1.8em;
         font-weight: 600;
         margin: -1em 0 0.5em 0;
     }
 
     .input-group {
-        background: hsl(0deg 0% 100%);
-        box-shadow: 0 0 2em hsl(231deg 62% 94%);
+        background: hsl(0deg 0% 22%);
+        box-shadow: 0 0 2em rgba(0, 0, 0, 0.4);
         padding: 1.2em;
         display: flex;
         flex-direction: column;
         gap: 0.5em;
         border-radius: 20px;
-        color: hsl(0deg 0% 30%);
+        color: hsl(0deg 0% 85%);
         transition: transform 0.3s ease, box-shadow 0.3s ease;
     }
 
@@ -397,7 +390,7 @@
     .input-group label {
         font-size: 0.85em;
         font-weight: 500;
-        color: hsl(0deg 0% 30%);
+        color: hsl(0deg 0% 90%);
         margin-bottom: 0.3em;
     }
 
@@ -419,11 +412,11 @@
         background: transparent;
         flex: 1;
         font-size: 0.95em;
-        color: hsl(0deg 0% 20%);
+        color: hsl(0deg 0% 95%);
     }
 
     .input-group input::placeholder {
-        color: hsl(0deg 0% 60%);
+        color: hsl(0deg 0% 50%);
         font-size: 0.9em;
     }
 
@@ -471,7 +464,7 @@
         align-items: center;
         gap: 1em;
         margin: 1em 0;
-        color: hsl(0deg 0% 50%);
+        color: hsl(0deg 0% 60%);
         font-size: 0.85em;
     }
 
@@ -480,12 +473,12 @@
         content: '';
         flex: 1;
         height: 1px;
-        background: hsl(0deg 0% 85%);
+        background: hsl(0deg 0% 35%);
     }
 
     .sso-button {
-        background: white;
-        border: 2px solid hsl(0deg 0% 90%);
+        background: hsl(0deg 0% 22%);
+        border: 2px solid hsl(0deg 0% 35%);
         padding: 0.9em;
         border-radius: 20px;
         font-weight: 500;
@@ -493,7 +486,7 @@
         cursor: pointer;
         transition: all 0.3s ease;
         margin-bottom: 0.8em;
-        color: hsl(0deg 0% 30%);
+        color: hsl(0deg 0% 90%);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -501,7 +494,7 @@
     }
 
     .sso-button:hover {
-        background: hsl(0deg 0% 98%);
+        background: hsl(0deg 0% 26%);
         border-color: #910012;
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
@@ -511,7 +504,7 @@
         display: flex;
         justify-content: space-between;
         font-size: 0.8em;
-        color: hsl(0deg 0% 45%);
+        color: hsl(0deg 0% 60%);
         margin-top: 0.5em;
     }
 
@@ -525,8 +518,8 @@
     }
 
     .error-message {
-        background: rgba(145, 0, 18, 0.1);
-        color: #910012;
+        background: rgba(145, 0, 18, 0.2);
+        color: #ff6b7a;
         padding: 0.8em;
         border-radius: 15px;
         font-size: 0.85em;
@@ -541,7 +534,7 @@
         justify-content: center;
         align-items: center;
         padding: 2em;
-        background: white;
+        background: hsl(0deg 0% 22%);
         border-radius: 20px;
         margin: 1em 0;
     }
@@ -554,7 +547,7 @@
 
     .info-text {
         font-size: 0.9em;
-        color: hsl(0deg 0% 40%);
+        color: hsl(0deg 0% 70%);
         text-align: center;
         line-height: 1.6;
         margin: 1em 0;
@@ -562,13 +555,13 @@
 
     .fun-fact {
         text-align: center;
-        color: hsl(0deg 0% 30%);
+        color: hsl(0deg 0% 80%);
         font-size: 1.1em;
         font-weight: 500;
         margin-top: 2em;
         padding: 0 2em;
         animation: crypticFadeIn 1.5s ease-out;
-        text-shadow: 0 0 10px rgba(145, 0, 18, 0.3);
+        text-shadow: 0 0 15px rgba(220, 20, 60, 0.5);
         letter-spacing: 0.5px;
         font-style: italic;
     }
@@ -632,9 +625,15 @@
     }
 
     @@keyframes shake {
-        0%, 100% { transform: translateX(0); }
-        25% { transform: translateX(-10px); }
-        75% { transform: translateX(10px); }
+        0%, 100% {
+            transform: translateX(0);
+        }
+        25% {
+            transform: translateX(-10px);
+        }
+        75% {
+            transform: translateX(10px);
+        }
     }
 
     .animated-text {
@@ -657,13 +656,27 @@
     }
 
     @@keyframes wave {
-        0% { transform: rotate(0deg); }
-        15% { transform: rotate(15deg); }
-        30% { transform: rotate(-10deg); }
-        45% { transform: rotate(15deg); }
-        60% { transform: rotate(-10deg); }
-        75% { transform: rotate(15deg); }
-        100% { transform: rotate(0deg); }
+        0% {
+            transform: rotate(0deg);
+        }
+        15% {
+            transform: rotate(15deg);
+        }
+        30% {
+            transform: rotate(-10deg);
+        }
+        45% {
+            transform: rotate(15deg);
+        }
+        60% {
+            transform: rotate(-10deg);
+        }
+        75% {
+            transform: rotate(15deg);
+        }
+        100% {
+            transform: rotate(0deg);
+        }
     }
 
     /* Mobile Responsive */
@@ -695,8 +708,9 @@
 </style>
 
 <MudOverlay Visible="@loading_overlay" DarkBackground="false" Absolute="false">
-    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 1rem; animation: fadeIn 0.5s ease-in-out;">
-        <MudProgressCircular Color="Color.Primary" Size="Size.Large" Indeterminate="true" Thickness="6" />
+    <div
+        style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 1rem; animation: fadeIn 0.5s ease-in-out;">
+        <MudProgressCircular Color="Color.Primary" Size="Size.Large" Indeterminate="true" Thickness="6"/>
         <MudText Typo="Typo.h5" Class="animated-text">
             Please wait... <span class="wave-emoji">🐧</span>
         </MudText>
@@ -708,20 +722,22 @@
         <div class="login-page-wrapper">
             <!-- Blood Particles Canvas -->
             <canvas id="blood-particles-canvas"></canvas>
-            
+
             <div class="screen-1">
                 <div class="logo-container">
                     @if (!string.IsNullOrEmpty(NetLock_RMM_Web_Console.Configuration.Web_Console.logoBase64))
                     {
-                        <img src="@($"data:image/png;base64,{NetLock_RMM_Web_Console.Configuration.Web_Console.logoBase64}")" alt="Logo" style="max-height: 150px; max-width: 300px; object-fit: contain;" />
+                        <img
+                            src="@($"data:image/png;base64,{NetLock_RMM_Web_Console.Configuration.Web_Console.logoBase64}")"
+                            alt="Logo" style="max-height: 150px; max-width: 300px; object-fit: contain;"/>
                     }
                     else
                     {
-                        <img src="media/images/NetLock-Logo-Dark-Transparent.png" alt="NetLock RMM Logo" />
+                        <img src="media/images/NetLock-Logo-Dark-Transparent.png" alt="NetLock RMM Logo"/>
                     }
                 </div>
 
-                <h2 class="login-title">@(auth_status == 1 ? Localizer["reset_password"] : "Welcome Back")</h2>
+                <h2 class="login-title">@(auth_status == 1 ? "Reset Password" : "Welcome Back")</h2>
 
                 @if (auth_status == 0 && two_factor_state == 0)
                 {
@@ -729,29 +745,30 @@
                     <div class="input-group">
                         <label for="username">@Localizer["username"]</label>
                         <div class="input-wrapper">
-                            <MudIcon Icon="@Icons.Material.Outlined.Email" />
-                            <input type="text" 
-                                   @bind="@username" 
+                            <MudIcon Icon="@Icons.Material.Outlined.Email"/>
+                            <input type="text"
+                                   @bind="@username"
                                    @bind:event="oninput"
                                    @onkeydown="Enter"
-                                   placeholder="username@domain.com" />
+                                   placeholder="username@domain.com"/>
                         </div>
                     </div>
 
                     <div class="input-group">
                         <label for="password">@Localizer["password"]</label>
                         <div class="input-wrapper">
-                            <MudIcon Icon="@Icons.Material.Outlined.Lock" />
-                            <input type="@(showPassword ? "text" : "password")" 
-                                   @bind="@password" 
+                            <MudIcon Icon="@Icons.Material.Outlined.Lock"/>
+                            <input type="@(showPassword ? "text" : "password")"
+                                   @bind="@password"
                                    @bind:event="oninput"
                                    @onkeydown="Enter"
-                                   placeholder="············" />
-                            <MudIconButton Icon="@(showPassword ? Icons.Material.Outlined.VisibilityOff : Icons.Material.Outlined.Visibility)" 
-                                          Class="show-hide-icon"
-                                          OnClick="TogglePasswordVisibility"
-                                          Size="Size.Small"
-                                          aria-label="Toggle password visibility" />
+                                   placeholder="············"/>
+                            <MudIconButton
+                                Icon="@(showPassword ? Icons.Material.Outlined.VisibilityOff : Icons.Material.Outlined.Visibility)"
+                                Class="show-hide-icon"
+                                OnClick="TogglePasswordVisibility"
+                                Size="Size.Small"
+                                aria-label="Toggle password visibility"/>
                         </div>
                     </div>
 
@@ -767,36 +784,41 @@
 
                         @if (isAzureAdEnabled)
                         {
-                            <button class="sso-button" @onclick='() => NavigationManager.NavigateTo("/challenge/azuread", true)'>
-                                <MudIcon Icon="@Icons.Custom.Brands.Microsoft" Size="Size.Small" /> Sign in with Microsoft
+                            <button class="sso-button" @onclick='() => SsoSignIn("/challenge/azuread")'>
+                                <MudIcon Icon="@Icons.Custom.Brands.Microsoft" Size="Size.Small"/>
+                                Sign in with Microsoft
                             </button>
                         }
 
                         @if (isKeycloakEnabled)
                         {
-                            <button class="sso-button" @onclick='() => NavigationManager.NavigateTo("/challenge/keycloak", true)'>
-                                <MudIcon Icon="@Icons.Material.Outlined.VpnKey" Size="Size.Small" /> Sign in with Keycloak
+                            <button class="sso-button" @onclick='() => SsoSignIn("/challenge/keycloak")'>
+                                <MudIcon Icon="@Icons.Material.Outlined.VpnKey" Size="Size.Small"/>
+                                Sign in with Keycloak
                             </button>
                         }
 
                         @if (isGoogleIdentityEnabled)
                         {
-                            <button class="sso-button" @onclick='() => NavigationManager.NavigateTo("/challenge/google", true)'>
-                                <MudIcon Icon="@Icons.Custom.Brands.Google" Size="Size.Small" /> Sign in with Google
+                            <button class="sso-button" @onclick='() => SsoSignIn("/challenge/google")'>
+                                <MudIcon Icon="@Icons.Custom.Brands.Google" Size="Size.Small"/>
+                                Sign in with Google
                             </button>
                         }
 
                         @if (isOktaEnabled)
                         {
-                            <button class="sso-button" @onclick='() => NavigationManager.NavigateTo("/challenge/okta", true)'>
-                                <MudIcon Icon="@Icons.Material.Outlined.Security" Size="Size.Small" /> Sign in with Okta
+                            <button class="sso-button" @onclick='() => SsoSignIn("/challenge/okta")'>
+                                <MudIcon Icon="@Icons.Material.Outlined.Security" Size="Size.Small"/>
+                                Sign in with Okta
                             </button>
                         }
 
                         @if (isAuth0Enabled)
                         {
-                            <button class="sso-button" @onclick='() => NavigationManager.NavigateTo("/challenge/auth0", true)'>
-                                <MudIcon Icon="@Icons.Material.Outlined.Lock" Size="Size.Small" /> Sign in with Auth0
+                            <button class="sso-button" @onclick='() => SsoSignIn("/challenge/auth0")'>
+                                <MudIcon Icon="@Icons.Material.Outlined.Lock" Size="Size.Small"/>
+                                Sign in with Auth0
                             </button>
                         }
                     }
@@ -804,22 +826,24 @@
                 else if (auth_status == 0 && two_factor_state == 1)
                 {
                     <!-- 2FA Setup -->
-                    <p class="info-text">Two-Factor Authentication has been enabled for your account. Please set it up with your favorite 2FA app.</p>
+                    <p class="info-text">Two-Factor Authentication has been enabled for your account. Please set it up
+                        with your favorite 2FA app.</p>
 
                     <div class="qr-code-container">
-                        <img src="@two_factor_qrCodeImageUrl" alt="QR Code" />
+                        <img src="@two_factor_qrCodeImageUrl" alt="QR Code"/>
                     </div>
 
-                    <p class="info-text">Scan the QR code with your Authenticator app or enter the following code manually: <strong>@two_factor_manualEntrySetupCode</strong></p>
+                    <p class="info-text">Scan the QR code with your Authenticator app or enter the following code
+                        manually: <strong>@two_factor_manualEntrySetupCode</strong></p>
 
                     <div class="input-group">
                         <label for="2fa-code">@Localizer["2factor_verification_code"]</label>
                         <div class="input-wrapper">
-                            <MudIcon Icon="@Icons.Material.Outlined.Dialpad" />
-                            <input type="text" 
-                                   @bind="@two_factor_codeInput" 
+                            <MudIcon Icon="@Icons.Material.Outlined.Dialpad"/>
+                            <input type="text"
+                                   @bind="@two_factor_codeInput"
                                    @bind:event="oninput"
-                                   placeholder="000000" />
+                                   placeholder="000000"/>
                         </div>
                     </div>
 
@@ -835,12 +859,12 @@
                     <div class="input-group">
                         <label for="2fa-code">@Localizer["2factor_verification_code"]</label>
                         <div class="input-wrapper">
-                            <MudIcon Icon="@Icons.Material.Outlined.Dialpad" />
-                            <input type="text" 
-                                   @bind="@two_factor_codeInput" 
+                            <MudIcon Icon="@Icons.Material.Outlined.Dialpad"/>
+                            <input type="text"
+                                   @bind="@two_factor_codeInput"
                                    @bind:event="oninput"
                                    @onkeydown="Enter"
-                                   placeholder="000000" />
+                                   placeholder="000000"/>
                         </div>
                     </div>
 
@@ -854,34 +878,36 @@
                     <div class="input-group">
                         <label for="new-password">@Localizer["new_password"]</label>
                         <div class="input-wrapper">
-                            <MudIcon Icon="@Icons.Material.Outlined.Lock" />
-                            <input type="@(showPassword ? "text" : "password")" 
-                                   @bind="@password_new" 
+                            <MudIcon Icon="@Icons.Material.Outlined.Lock"/>
+                            <input type="@(showPassword ? "text" : "password")"
+                                   @bind="@password_new"
                                    @bind:event="oninput"
                                    @onkeydown="Enter"
-                                   placeholder="············" />
-                            <MudIconButton Icon="@(showPassword ? Icons.Material.Outlined.VisibilityOff : Icons.Material.Outlined.Visibility)" 
-                                          Class="show-hide-icon"
-                                          OnClick="TogglePasswordVisibility"
-                                          Size="Size.Small"
-                                          aria-label="Toggle password visibility" />
+                                   placeholder="············"/>
+                            <MudIconButton
+                                Icon="@(showPassword ? Icons.Material.Outlined.VisibilityOff : Icons.Material.Outlined.Visibility)"
+                                Class="show-hide-icon"
+                                OnClick="TogglePasswordVisibility"
+                                Size="Size.Small"
+                                aria-label="Toggle password visibility"/>
                         </div>
                     </div>
 
                     <div class="input-group">
                         <label for="confirm-password">@Localizer["new_password_confirm"]</label>
                         <div class="input-wrapper">
-                            <MudIcon Icon="@Icons.Material.Outlined.Lock" />
-                            <input type="@(showPasswordConfirm ? "text" : "password")" 
-                                   @bind="@password_confirm_new" 
+                            <MudIcon Icon="@Icons.Material.Outlined.Lock"/>
+                            <input type="@(showPasswordConfirm ? "text" : "password")"
+                                   @bind="@password_confirm_new"
                                    @bind:event="oninput"
                                    @onkeydown="Enter"
-                                   placeholder="············" />
-                            <MudIconButton Icon="@(showPasswordConfirm ? Icons.Material.Outlined.VisibilityOff : Icons.Material.Outlined.Visibility)" 
-                                          Class="show-hide-icon"
-                                          OnClick="TogglePasswordConfirmVisibility"
-                                          Size="Size.Small"
-                                          aria-label="Toggle password visibility" />
+                                   placeholder="············"/>
+                            <MudIconButton
+                                Icon="@(showPasswordConfirm ? Icons.Material.Outlined.VisibilityOff : Icons.Material.Outlined.Visibility)"
+                                Class="show-hide-icon"
+                                OnClick="TogglePasswordConfirmVisibility"
+                                Size="Size.Small"
+                                aria-label="Toggle password visibility"/>
                         </div>
                     </div>
 
@@ -895,29 +921,30 @@
                     <div class="input-group">
                         <label for="username">@Localizer["username"]</label>
                         <div class="input-wrapper">
-                            <MudIcon Icon="@Icons.Material.Outlined.Email" />
-                            <input type="text" 
-                                   @bind="@username" 
+                            <MudIcon Icon="@Icons.Material.Outlined.Email"/>
+                            <input type="text"
+                                   @bind="@username"
                                    @bind:event="oninput"
                                    @onkeydown="Enter"
-                                   placeholder="username@domain.com" />
+                                   placeholder="username@domain.com"/>
                         </div>
                     </div>
 
                     <div class="input-group">
                         <label for="password">@Localizer["password"]</label>
                         <div class="input-wrapper">
-                            <MudIcon Icon="@Icons.Material.Outlined.Lock" />
-                            <input type="@(showPassword ? "text" : "password")" 
-                                   @bind="@password" 
+                            <MudIcon Icon="@Icons.Material.Outlined.Lock"/>
+                            <input type="@(showPassword ? "text" : "password")"
+                                   @bind="@password"
                                    @bind:event="oninput"
                                    @onkeydown="Enter"
-                                   placeholder="············" />
-                            <MudIconButton Icon="@(showPassword ? Icons.Material.Outlined.VisibilityOff : Icons.Material.Outlined.Visibility)" 
-                                          Class="show-hide-icon"
-                                          OnClick="TogglePasswordVisibility"
-                                          Size="Size.Small"
-                                          aria-label="Toggle password visibility" />
+                                   placeholder="············"/>
+                            <MudIconButton
+                                Icon="@(showPassword ? Icons.Material.Outlined.VisibilityOff : Icons.Material.Outlined.Visibility)"
+                                Class="show-hide-icon"
+                                OnClick="TogglePasswordVisibility"
+                                Size="Size.Small"
+                                aria-label="Toggle password visibility"/>
                         </div>
                     </div>
 
@@ -929,7 +956,7 @@
                 {
                     <!-- Reset password with 2FA setup -->
                     <div class="qr-code-container">
-                        <img src="@two_factor_qrCodeImageUrl" alt="@Localizer["2factor_code_image_alt"]" />
+                        <img src="@two_factor_qrCodeImageUrl" alt="@Localizer["2factor_code_image_alt"]"/>
                     </div>
 
                     <p class="info-text">@Localizer["2factor_code_description"]</p>
@@ -938,11 +965,11 @@
                     <div class="input-group">
                         <label for="2fa-code">@Localizer["2factor_verification_code"]</label>
                         <div class="input-wrapper">
-                            <MudIcon Icon="@Icons.Material.Outlined.Dialpad" />
-                            <input type="text" 
-                                   @bind="@two_factor_codeInput" 
+                            <MudIcon Icon="@Icons.Material.Outlined.Dialpad"/>
+                            <input type="text"
+                                   @bind="@two_factor_codeInput"
                                    @bind:event="oninput"
-                                   placeholder="000000" />
+                                   placeholder="000000"/>
                         </div>
                     </div>
 
@@ -958,12 +985,12 @@
                     <div class="input-group">
                         <label for="2fa-code">@Localizer["2factor_verification_code"]</label>
                         <div class="input-wrapper">
-                            <MudIcon Icon="@Icons.Material.Outlined.Dialpad" />
-                            <input type="text" 
-                                   @bind="@two_factor_codeInput" 
+                            <MudIcon Icon="@Icons.Material.Outlined.Dialpad"/>
+                            <input type="text"
+                                   @bind="@two_factor_codeInput"
                                    @bind:event="oninput"
                                    @onkeydown="Enter"
-                                   placeholder="000000" />
+                                   placeholder="000000"/>
                         </div>
                     </div>
 
@@ -980,8 +1007,8 @@
                 }
 
                 <div class="footer-links">
-                    <span onclick="window.open('https://members.netlockrmm.com/', '_blank')">Support</span>
-                    <span onclick="window.open('https://docs.netlockrmm.com/', '_blank')">Documentation</span>
+                    <span onclick="window.open('mailto:support@netlockrmm.com', '_blank')">Support</span>
+                    <span onclick="window.open('https://netlockrmm.com/docs', '_blank')">Documentation</span>
                 </div>
             </div>
 
@@ -1014,10 +1041,10 @@
         {
             bool logout = false;
 
-            // Get the current user from the authentication state
+// Get the current user from the authentication state
             var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
 
-            // Check if user is authenticated
+// Check if user is authenticated
             if (user?.Identity is not { IsAuthenticated: true })
                 logout = true;
 
@@ -1026,18 +1053,15 @@
             permissions_dashboard_enabled = await Classes.Authentication.Permissions.Verify_Permission(user.FindFirst(ClaimTypes.Email)?.Value, "dashboard_enabled");
             permissions_tenants_list = await Classes.Authentication.Permissions.Get_Tenants(netlock_username, false);
 
-            if (!permissions_dashboard_enabled)
-                logout = true;
-
             if (logout) // Redirect to the login page
             {
                 NavigationManager.NavigateTo("/logout", true);
                 return false;
             }
 
-            // Load other permissions here
+// Load other permissions here
 
-            // All fine? Nice.
+// All fine? Nice.
             return true;
         }
         catch (Exception ex)
@@ -1056,7 +1080,7 @@
     {
         if (firstRender)
         {
-            // Initialize blood particles animation with retry
+// Initialize blood particles animation with retry
             try
             {
                 await JSRuntime.InvokeVoidAsync("eval", @"
@@ -1112,41 +1136,41 @@
 
     private async Task AfterInitializedAsync()
     {
-        // Check if user just logged out (to prevent automatic re-login)
+// Check if user just logged out (to prevent automatic re-login)
         var uri = new Uri(NavigationManager.Uri);
         var justLoggedOut = uri.Query.Contains("logout=true");
-        
+
         if (justLoggedOut)
         {
             Logging.Handler.Debug("/login", "State", "User just logged out, clearing all caches");
-            
-            // Clear SSO cache explicitly
+
+// Clear SSO cache explicitly
             if (AuthenticationStateProvider is CustomAuthenticationStateProvider customProvider)
             {
                 customProvider.ClearSsoCache();
                 Logging.Handler.Debug("/login", "State", "SSO cache cleared");
             }
-            
-            // Verify user is really logged out
+
+// Verify user is really logged out
             var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
             if (user?.Identity is { IsAuthenticated: true })
             {
                 Logging.Handler.Debug("/login", "State", "User still authenticated after logout, forcing full reload");
-                // User is still authenticated, force a full page reload to clear everything
+// User is still authenticated, force a full page reload to clear everything
                 NavigationManager.NavigateTo("/", true);
                 return;
             }
-            
+
             Logging.Handler.Debug("/login", "State", "Logout confirmed, clearing URL flag");
-            // Clear the logout flag from URL without reload (user is properly logged out)
+// Clear the logout flag from URL without reload (user is properly logged out)
             NavigationManager.NavigateTo("/", true);
         }
         else
         {
-            // Get the current user from the authentication state
+// Get the current user from the authentication state
             var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
 
-            // Check if user is authenticated
+// Check if user is authenticated
             if (user?.Identity is { IsAuthenticated: true })
             {
                 Logging.Handler.Debug("/login", "State", "User already authenticated, redirecting to dashboard");
@@ -1159,7 +1183,7 @@
         StateHasChanged();
 
         funFact = await Classes.Miscellaneous.FunFacts.GetRandomFact();
-        
+
         // Start Fun Fact rotation timer
         StartFunFactRotation();
 
@@ -1174,23 +1198,23 @@
 
     private void StartFunFactRotation()
     {
-        // Rotate fun facts every 10 seconds
+// Rotate fun facts every 10 seconds
         funFactTimer = new System.Threading.Timer(async _ =>
         {
             await InvokeAsync(async () =>
             {
-                // Add fade-out class
+// Add fade-out class
                 funFactFadeClass = "fade-out";
                 StateHasChanged();
 
-                // Wait for fade-out animation (1 second)
+// Wait for fade-out animation (1 second)
                 await Task.Delay(1000);
 
-                // Get new fun fact
+// Get new fun fact
                 funFact = await Classes.Miscellaneous.FunFacts.GetRandomFact();
                 funFactKey++; // Change key to force re-render with new animation
-                
-                // Remove fade-out class (will trigger fade-in)
+
+// Remove fade-out class (will trigger fade-in)
                 funFactFadeClass = "";
                 StateHasChanged();
             });
@@ -1217,7 +1241,7 @@
     private string password_new = String.Empty;
     private string password_confirm_new = String.Empty;
 
-    // Password visibility toggles
+// Password visibility toggles
     private bool showPassword = false;
     private bool showPasswordConfirm = false;
 
@@ -1231,7 +1255,7 @@
         showPasswordConfirm = !showPasswordConfirm;
     }
 
-    //2factor
+//2factor
     private TwoFactorAuthenticator tfa = new TwoFactorAuthenticator();
 
     private int two_factor_enabled = 0;
@@ -1245,6 +1269,10 @@
 
     private int invalid_count = 0;
 
+// new: auth mode detected for the account being used for login
+// possible values: "Password", "SSO", "Password & SSO"
+    private string auth_mode_from_db = "Password";
+
 
     private async Task Enter(KeyboardEventArgs e)
     {
@@ -1255,6 +1283,17 @@
     private async Task Authenticate()
     {
         Logging.Handler.Debug("/login -> Authenticate", "username", username);
+
+        // Get the user's IP address for rate limiting
+        string ipAddress = _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString();
+
+        // Check rate limiting
+        if (!RateLimiter.Instance.IsAllowed(ipAddress))
+        {
+            int minutesUntilUnblock = RateLimiter.Instance.GetMinutesUntilUnblock(ipAddress);
+            message = $"Too many failed attempts. Please try again in {minutesUntilUnblock} minute(s).";
+            return;
+        }
 
         MySqlConnection conn = new MySqlConnection(NetLock_RMM_Web_Console.Configuration.MySQL.Connection_String);
 
@@ -1276,12 +1315,28 @@
                     two_factor_enabled = Convert.ToInt32(reader["two_factor_enabled"]);
                     two_factor_account_secret_key = reader["two_factor_account_secret_key"].ToString() ?? string.Empty;
                     reset_password = Convert.ToInt32(reader["reset_password"]);
+
+// Read new auth_mode column (default to Password when null/empty)
+                    try
+                    {
+                        var tmp = reader["auth_mode"]?.ToString();
+                        if (string.IsNullOrEmpty(tmp))
+                            auth_mode_from_db = "Password";
+                        else
+                            auth_mode_from_db = tmp;
+                    }
+                    catch
+                    {
+                        auth_mode_from_db = "Password";
+                    }
                 }
             }
             else
             {
+                RateLimiter.Instance.RecordFailedAttempt(ipAddress);
                 invalid_count++;
-                message = Localizer["invalid_credentials"] + " (" + invalid_count + ")";
+                int remainingAttempts = RateLimiter.Instance.GetRemainingAttempts(ipAddress);
+                message = Localizer["invalid_credentials"] + " (" + invalid_count + ") - " + remainingAttempts + " attempt(s) remaining";
                 return;
             }
 
@@ -1301,10 +1356,20 @@
         Logging.Handler.Debug("/login -> Authenticate", "role", role);
         Logging.Handler.Debug("/login -> Authenticate", "two_factor_enabled", two_factor_enabled.ToString());
         Logging.Handler.Debug("/login -> Authenticate", "two_factor_account_secret_key", two_factor_account_secret_key);
+        Logging.Handler.Debug("/login -> Authenticate", "auth_mode", auth_mode_from_db);
 
         try
         {
             bool user_verified = false;
+
+// If this account is SSO-only, do not allow password authentication
+            if (string.Equals(auth_mode_from_db, "SSO", StringComparison.OrdinalIgnoreCase))
+            {
+                RateLimiter.Instance.RecordFailedAttempt(ipAddress);
+                message = "This account is configured for SSO only. Please sign in with your SSO provider.";
+                invalid_count++;
+                return;
+            }
 
             if (isPasswordCorrect && reset_password == 1)
             {
@@ -1316,10 +1381,10 @@
             {
                 if (two_factor_enabled == 1)
                 {
-                    // 2FA is activated
+// 2FA is activated
                     if (string.IsNullOrEmpty(two_factor_account_secret_key))
                     {
-                        // Key not set, user must go through setup
+// Key not set, user must go through setup
                         two_factor_account_secret_key = Randomizer.Handler.Key(20);
                         two_factor_setup_mode = true;
                         two_factor_state = 1;
@@ -1328,7 +1393,7 @@
                     }
                     else
                     {
-                        // Key set, user must verify code
+// Key set, user must verify code
                         two_factor_state = 2;
                         await Two_Factor_Authentification_VerifyCode();
 
@@ -1341,7 +1406,9 @@
                             }
                             else
                             {
-                                message = Localizer["2factor_invalid_code"];
+                                RateLimiter.Instance.RecordFailedAttempt(ipAddress);
+                                int remainingAttempts = RateLimiter.Instance.GetRemainingAttempts(ipAddress);
+                                message = Localizer["2factor_invalid_code"] + " - " + remainingAttempts + " attempt(s) remaining";
                                 invalid_count++;
                                 return; // Abort if the code is incorrect
                             }
@@ -1350,19 +1417,23 @@
                 }
                 else
                 {
-                    // 2FA is not activated
+// 2FA is not activated
                     user_verified = true;
                 }
 
                 if (user_verified)
                 {
+                    // Reset rate limiting on successful login
+                    RateLimiter.Instance.ResetAttempts(ipAddress);
                     await Login_User();
                 }
             }
             else
             {
+                RateLimiter.Instance.RecordFailedAttempt(ipAddress);
                 invalid_count++;
-                message = Localizer["invalid_credentials"] + " (" + invalid_count + ")";
+                int remainingAttempts = RateLimiter.Instance.GetRemainingAttempts(ipAddress);
+                message = Localizer["invalid_credentials"] + " (" + invalid_count + ") - " + remainingAttempts + " attempt(s) remaining";
             }
         }
         catch (Exception ex)
@@ -1371,6 +1442,54 @@
         }
     }
 
+// Helper: get auth_mode for a given username (used when user clicks an SSO button but entered a username)
+    private async Task<string> GetAuthModeForUsername(string user)
+    {
+        if (string.IsNullOrEmpty(user))
+            return "Password"; // unknown -> default to Password (server side will still enforce)
+
+        try
+        {
+            using var conn = new MySqlConnection(NetLock_RMM_Web_Console.Configuration.MySQL.Connection_String);
+            await conn.OpenAsync();
+            using var cmd = new MySqlCommand("SELECT auth_mode FROM accounts WHERE username = @username LIMIT 1;", conn);
+            cmd.Parameters.AddWithValue("@username", user);
+            using var reader = await cmd.ExecuteReaderAsync();
+            if (reader.Read())
+            {
+                var tmp = reader[0]?.ToString();
+                return string.IsNullOrEmpty(tmp) ? "Password" : tmp;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("/login -> GetAuthModeForUsername", "error", ex.ToString());
+        }
+
+        return "Password";
+    }
+
+// Wrapper for SSO button clicks to respect per-user auth_mode when username is provided
+    private async Task SsoSignIn(string providerPath)
+    {
+// If user provided a username, check if that account allows SSO
+        if (!string.IsNullOrEmpty(username))
+        {
+            var mode = await GetAuthModeForUsername(username);
+            Logging.Handler.Debug("/login -> SsoSignIn", "auth_mode_for_user", mode);
+
+            if (string.Equals(mode, "Password", StringComparison.OrdinalIgnoreCase))
+            {
+// Account is password-only
+                Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+                Snackbar.Add("This account is configured for password login only. SSO is not allowed.", Severity.Error);
+                return;
+            }
+        }
+
+// Otherwise proceed with the SSO redirection
+        NavigationManager.NavigateTo(providerPath, true);
+    }
 
     private async Task Login_User()
     {
@@ -1379,10 +1498,10 @@
 
         try
         {
-            // Get the user's IP addresses
+// Get the user's IP addresses
             string ip_address = _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString();
 
-            // Update latest login session
+// Update latest login session
             MySqlConnection conn = new MySqlConnection(NetLock_RMM_Web_Console.Configuration.MySQL.Connection_String);
 
             try
@@ -1412,12 +1531,10 @@
 
             var customAuthStateProvider = (CustomAuthenticationStateProvider)AuthenticationStateProvider;
             await customAuthStateProvider.UpdateAuthentificationState(new UserSession
-                {
-                    UserName = username,
-                    Role = role
-                }, false);
-
-			//Snackbar.Add("Welcome back! :)", Severity.Success);
+            {
+                UserName = username,
+                Role = role
+            }, false);
 
             await Permissions();
 
@@ -1468,14 +1585,14 @@
 
             if (success)
             {
-                // Setze Setup-Mode zurück und melde den Benutzer an
+// Setze Setup-Mode zurück und melde den Benutzer an
                 two_factor_setup_mode = false;
                 await Login_User();
             }
         }
         else if (!two_factor_setup_mode && two_factor_isCodeVerified)
         {
-            // 2FA-Verifizierung erfolgreich ohne Setup-Modus
+// 2FA-Verifizierung erfolgreich ohne Setup-Modus
             await Login_User();
         }
     }
@@ -1488,7 +1605,7 @@
         two_factor_qrCodeImageUrl = setupInfo.QrCodeSetupImageUrl;
         two_factor_manualEntrySetupCode = setupInfo.ManualEntryKey;
 
-        // The code is expected after the setup
+// The code is expected after the setup
         message = "Please scan the QR code or manually enter the setup code, then enter the verification code.";
     }
 
@@ -1534,7 +1651,7 @@
 
             Logging.Handler.Debug("/login -> Reset_Password", "result", success.ToString());
 
-            //clear password
+//clear password
             password = String.Empty;
             message = String.Empty;
             invalid_count = 0;
@@ -1552,4 +1669,5 @@
             await conn.CloseAsync();
         }
     }
+
 }

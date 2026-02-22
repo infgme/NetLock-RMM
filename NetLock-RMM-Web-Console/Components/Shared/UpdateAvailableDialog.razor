@@ -1,0 +1,109 @@
+@inject NavigationManager NavigationManager
+
+<MudDialog>
+    <DialogContent>
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            <MudText Typo="Typo.h6">
+                New Version Available!
+            </MudText>
+        </MudAlert>
+
+        <MudText Typo="Typo.body1" Class="mb-3">
+            A new version of <strong>NetLock RMM</strong> is available. 
+            The latest version (<strong>@LatestVersion</strong>) was released <strong>@DaysSinceRelease days ago</strong>.
+        </MudText>
+
+        <MudText Typo="Typo.body1" Class="mb-3">
+            Your current version: <MudChip T="string" Color="Color.Default">@CurrentVersion</MudChip>
+        </MudText>
+
+        <MudDivider Class="my-4" />
+
+        <MudAlert Severity="Severity.Error" Class="mb-4">
+            <MudText Typo="Typo.body1">
+                <strong>Important Notice:</strong> Please update within <strong>@DaysRemaining days</strong>. 
+                After <strong>30 days</strong>, your instance will cease operation for security reasons and you will need to perform an update 
+                to continue using the Web Console.
+            </MudText>
+        </MudAlert>
+
+        <MudText Typo="Typo.h6" Class="mb-2">
+            📋 Patch SLA Policy
+        </MudText>
+        <MudText Typo="Typo.body2" Class="mb-4">
+            We have introduced a <strong>Patch SLA</strong> that requires users to promptly update after a new version is released. 
+            This measure ensures the best possible <strong>compatibility</strong> and <strong>security</strong> for all NetLock RMM instances.
+        </MudText>
+
+        <MudDivider Class="my-4" />
+
+        <MudText Typo="Typo.h6" Class="mb-2">
+            🔧 Upgrade Instructions
+        </MudText>
+
+        <MudText Typo="Typo.subtitle1" Class="mb-2 mt-3">
+            <strong>Web Console & Server (Docker)</strong>
+        </MudText>
+        <MudText Typo="Typo.body2" Class="mb-2">
+            All you need to do is pull the new image with the following command:
+        </MudText>
+        <MudPaper Class="pa-3 mb-3" Style="background-color: #1e1e1e; border-radius: 4px;">
+            <code style="color: #dcdcdc; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all;">sudo docker compose -f /home/netlock/docker-compose.yml pull && sudo docker compose -f /home/netlock/docker-compose.yml up -d --remove-orphans</code>
+        </MudPaper>
+        <MudText Typo="Typo.body2" Class="mb-3">
+            The database structure & agents update automatically. No manual migration steps required.
+        </MudText>
+
+        <MudDivider Class="my-3" />
+
+        <MudText Typo="Typo.subtitle1" Class="mb-2">
+            <strong>🤖 Automatically Checking for Updates</strong>
+        </MudText>
+        <MudText Typo="Typo.body2" Class="mb-2">
+            We suggest automatically checking for newer images using <strong>Watchtower</strong>.
+        </MudText>
+        <MudText Typo="Typo.body2" Class="mb-2">
+            Example to check for a new version every 15 minutes:
+        </MudText>
+        <MudPaper Class="pa-3 mb-3" Style="background-color: #1e1e1e; border-radius: 4px;">
+            <code style="color: #dcdcdc; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; white-space: pre-wrap;">sudo docker run --detach \
+    --name watchtower \
+    --volume /var/run/docker.sock:/var/run/docker.sock \
+    --restart unless-stopped \
+    nickfedor/watchtower \
+    --interval 900</code>
+        </MudPaper>
+
+    </DialogContent>
+    <DialogActions>
+        <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default" OnClick="RemindLater">
+            Remind Me Later
+        </MudButton>
+        <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" 
+                   Href="https://netlockrmm.com/docs/upgrade" Target="_blank"
+                   StartIcon="@Icons.Material.Filled.OpenInNew">
+            Open Documentation
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] 
+    private IMudDialogInstance? MudDialog { get; set; }
+
+    [Parameter]
+    public string LatestVersion { get; set; } = string.Empty;
+
+    [Parameter]
+    public string CurrentVersion { get; set; } = string.Empty;
+
+    [Parameter]
+    public int DaysSinceRelease { get; set; }
+
+    public int DaysRemaining => Math.Max(0, 30 - DaysSinceRelease);
+
+    private void RemindLater()
+    {
+        MudDialog?.Close(DialogResult.Cancel());
+    }
+}

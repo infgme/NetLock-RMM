@@ -411,7 +411,7 @@
 
             community_scripts_dialog_open = true;
 
-            var result = await this.DialogService.Show<Pages.Collections.Scripts.Community_Scripts.Community_Scripts_Dialog>(string.Empty, parameters, options).Result;
+            var result = await (await DialogService.ShowAsync<Pages.Collections.Scripts.Community_Scripts.Community_Scripts_Dialog>(string.Empty, parameters, options)).Result;
 
             // Handle the result if needed
             if (!result.Canceled)

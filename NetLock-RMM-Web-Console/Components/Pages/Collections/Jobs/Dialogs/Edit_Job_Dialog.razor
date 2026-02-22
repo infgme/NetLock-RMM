@@ -147,7 +147,7 @@
                 <MudSelectItem Value="@("Windows")" />
                 <MudSelectItem Value="@("Linux")" />
                 <MudSelectItem Value="@("MacOS")" />
-                <MudSelectItem Value="@("System")" />
+                <!--<MudSelectItem Value="@("System")" />-->
             </MudSelect>
 
             <MudSelect Class="mt-3" T="string" @bind-Value="type_display" @bind-Value:after="async () => { await Get_Scripts(false); }" Label="@Localizer["type"].ToString()" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" Immediate=@true>

@@ -12,6 +12,7 @@
 @inject IDataProtectionProvider DataProtectionProvider
 @inject IStringLocalizer<Pages.Tenants.Dialogs.Group_Management.Add_Group_Dialog> Localizer
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NetLock_RMM_Web_Console.Classes.Helper.TenantUpdateService TenantUpdateService
 
 <AuthorizeView>
     <NotAuthorized>
@@ -150,12 +151,15 @@
                 {
                     this.Snackbar.Add(Localizer["successfully_added"], Severity.Success);
 
-                    Thread.Sleep(1000);
-                    NavigationManager.Refresh(true);
+                    // Notify NavMenu to reload tenant data
+                    TenantUpdateService.NotifyTenantUpdated();
+                    
+                    this.MudDialog.Close(DialogResult.Ok("success"));
                 }
                 else
                 {
                     this.Snackbar.Add(Localizer["adding_failed"], Severity.Error);
+                    this.MudDialog.Close(DialogResult.Ok("error"));
                 }
             }
             else //Already existing

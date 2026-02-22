@@ -53,10 +53,23 @@ Global.Configuration.Agent.remote_servers = Global.Initialization.Server_Config.
 Global.Configuration.Agent.update_servers = Global.Initialization.Server_Config.Update_Servers();
 Global.Configuration.Agent.trust_servers = Global.Initialization.Server_Config.Trust_Servers();
 Global.Configuration.Agent.file_servers = Global.Initialization.Server_Config.File_Servers();
+Global.Configuration.Agent.relay_servers = Global.Initialization.Server_Config.Relay_Servers();
 Global.Configuration.Agent.tenant_guid = Global.Initialization.Server_Config.Tenant_Guid();
 Global.Configuration.Agent.location_guid = Global.Initialization.Server_Config.Location_Guid();
 Global.Configuration.Agent.language = Global.Initialization.Server_Config.Language();
 Global.Configuration.Agent.device_name = Environment.MachineName;
+
+// Output platform config
+Console.WriteLine($"Device Name: {Global.Configuration.Agent.device_name}");
+Console.WriteLine($"Communication Servers: {Global.Configuration.Agent.communication_servers}");
+Console.WriteLine($"Remote Servers: {Global.Configuration.Agent.remote_servers}");
+Console.WriteLine($"Update Servers: {Global.Configuration.Agent.update_servers}");
+Console.WriteLine($"Trust Servers: {Global.Configuration.Agent.trust_servers}");
+Console.WriteLine($"File Servers: {Global.Configuration.Agent.file_servers}");
+Console.WriteLine($"Relay Servers: {Global.Configuration.Agent.relay_servers}");
+
+Console.WriteLine(Environment.NewLine);
+Console.WriteLine("Detecting platform...");
 
 if (OperatingSystem.IsWindows())
 {

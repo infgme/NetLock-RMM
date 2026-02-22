@@ -1780,7 +1780,7 @@
 
         antivirus_exclusion_add_dialog_open = true;
 
-        var result = await this.DialogService.Show<Pages.Policies.Antivirus.Exclusions.Add_Exclusion_Dialog>(string.Empty, parameters, options).Result;
+        var result = await (await DialogService.ShowAsync<Pages.Policies.Antivirus.Exclusions.Add_Exclusion_Dialog>(string.Empty, parameters, options)).Result;
 
         antivirus_exclusion_add_dialog_open = false;
 
@@ -1818,7 +1818,7 @@
 
         antivirus_exclusion_edit_dialog_open = true;
 
-        var result = await this.DialogService.Show<Pages.Policies.Antivirus.Exclusions.Edit_Exclusion_Dialog>(string.Empty, parameters, options).Result;
+        var result = await (await DialogService.ShowAsync<Pages.Policies.Antivirus.Exclusions.Edit_Exclusion_Dialog>(string.Empty, parameters, options)).Result;
 
         antivirus_exclusion_edit_dialog_open = false;
 
@@ -2124,7 +2124,7 @@
 
         antivirus_scan_job_add_dialog_open = true;
 
-        var result = await this.DialogService.Show<Pages.Policies.Antivirus.Scan_Jobs.Add_Scan_Job_Dialog>(string.Empty, parameters, options).Result;
+        var result = await (await DialogService.ShowAsync<Pages.Policies.Antivirus.Scan_Jobs.Add_Scan_Job_Dialog>(string.Empty, parameters, options)).Result;
 
         antivirus_scan_job_add_dialog_open = false;
 
@@ -2162,7 +2162,7 @@
 
         antivirus_scan_job_edit_dialog_open = true;
 
-        var result = await this.DialogService.Show<Pages.Policies.Antivirus.Scan_Jobs.Edit_Scan_Job_Dialog>(string.Empty, parameters, options).Result;
+        var result = await (await DialogService.ShowAsync<Pages.Policies.Antivirus.Scan_Jobs.Edit_Scan_Job_Dialog>(string.Empty, parameters, options)).Result;
 
         antivirus_scan_job_edit_dialog_open = false; 
 
@@ -2346,7 +2346,7 @@
 
         antivirus_controlled_folder_access_folders_add_dialog_open = true;
 
-        var result = await this.DialogService.Show<Pages.Policies.Antivirus.Controlled_Folder_Access_Folders.Add_Controlled_Folder_Access_Folders_Dialog>(string.Empty, parameters, options).Result;
+        var result = await (await DialogService.ShowAsync<Pages.Policies.Antivirus.Controlled_Folder_Access_Folders.Add_Controlled_Folder_Access_Folders_Dialog>(string.Empty, parameters, options)).Result;
 
         antivirus_controlled_folder_access_folders_add_dialog_open = false;
 
@@ -2384,7 +2384,7 @@
 
         antivirus_controlled_folder_access_folders_edit_dialog_open = false;
 
-        var result = await this.DialogService.Show<Pages.Policies.Antivirus.Controlled_Folder_Access_Folders.Edit_Controlled_Folder_Access_Folders_Dialog>(string.Empty, parameters , options).Result;
+        var result = await this.DialogService.Show<Pages.Policies.Antivirus.Controlled_Folder_Access_Folders.Add_Controlled_Folder_Access_Folders_Dialog>(string.Empty, parameters, options).Result;
 
         antivirus_controlled_folder_access_folders_edit_dialog_open = true;
 
@@ -3072,7 +3072,7 @@
 
         add_button_dialog_open = true;
 
-        var result = await this.DialogService.Show<Pages.Policies.Dialogs.TrayIcon.Add_Button_Dialog>("Add new button", parameters, options).Result;
+        var result = await (await DialogService.ShowAsync<Pages.Policies.Dialogs.TrayIcon.Add_Button_Dialog>("Add new button", parameters, options)).Result;
 
         add_button_dialog_open = false;
 
@@ -3157,7 +3157,7 @@
 
         edit_button_dialog_open = true;
 
-        var result = await this.DialogService.Show<Pages.Policies.Dialogs.TrayIcon.Edit_Button_Dialog>("Edit button", parameters, options).Result;
+        var result = await (await DialogService.ShowAsync<Pages.Policies.Dialogs.TrayIcon.Edit_Button_Dialog>("Edit button", parameters, options)).Result;
 
         edit_button_dialog_open = false;
 
@@ -3415,7 +3415,7 @@
 
          show_delete_policy_dialog_open = true;
 
-        await this.DialogService.Show<Dialogs.Delete_Policy_Dialog>(string.Empty, parameters, options).Result;
+        await (await DialogService.ShowAsync<Dialogs.Delete_Policy_Dialog>(string.Empty, parameters, options)).Result;
 
         show_delete_policy_dialog_open = false;
     }

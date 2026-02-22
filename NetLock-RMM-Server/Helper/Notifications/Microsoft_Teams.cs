@@ -46,8 +46,15 @@ namespace Helper.Notifications
             {
                 using (HttpClient client = new HttpClient())
                 {
+                    // Escape the message for JSON to handle newlines, quotes, and other special characters
+                    string escapedMessage = JsonSerializer.Serialize(message);
+                    // Remove the surrounding quotes added by JsonSerializer.Serialize for a string
+                    escapedMessage = escapedMessage.Substring(1, escapedMessage.Length - 2);
+                    
                     // Erstellen Sie eine JSON-Payload für die Nachricht
-                    string jsonPayload = $"{{ \"text\": \"{message}\" }}";
+                    string jsonPayload = $"{{ \"text\": \"{escapedMessage}\" }}";
+
+                    Logging.Handler.Debug("Classes.Helper.Notifications.Microsoft_Teams", "Send_Message.jsonPayload", jsonPayload);
 
                     // Erstellen Sie den Inhalt der Anfrage
                     StringContent content = new StringContent(jsonPayload);

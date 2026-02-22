@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>$(MSBuildProjectName.Replace(" ", "_"))</RootNamespace>
@@ -26,27 +26,39 @@
 
 
   <ItemGroup>
-    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+    <PackageReference Include="BCrypt.Net-Next" Version="4.1.0" />
     <PackageReference Include="Blazored.LocalStorage" Version="4.5.0" />
     <PackageReference Include="BlazorMonaco" Version="3.4.0" />
     <PackageReference Include="GoogleAuthenticator" Version="3.2.0" />
     <PackageReference Include="Markdig" Version="0.44.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" Version="9.0.11" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="9.0.11" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" Version="10.0.3" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.3" />
     <PackageReference Include="MudBlazor" Version="8.15.0" />
     <PackageReference Include="MySqlConnector" Version="2.5.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="9.0.11" />
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.15.0" />
-    <PackageReference Include="System.Management" Version="9.0.11" />
-    <PackageReference Include="Telegram.Bot" Version="22.7.5" />
-    <PackageReference Include="Microsoft.Identity.Web" Version="2.22.0" />
-    <PackageReference Include="Microsoft.Identity.Web.UI" Version="2.22.0" />
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.3" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.16.0" />
+    <PackageReference Include="System.Management" Version="10.0.3" />
+    <PackageReference Include="Telegram.Bot" Version="22.9.0" />
+    <PackageReference Include="Microsoft.Identity.Web" Version="4.3.0" />
+    <PackageReference Include="Microsoft.Identity.Web.UI" Version="4.3.0" />
   </ItemGroup>
 
 
   <ItemGroup>
     <Folder Include="Resources\Components\Pages\Collections\Files\Dialogs\" />
     <Folder Include="Resources\Components\Shared\" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <_ContentIncludedByDefault Remove="Components\Pages\Devices\Dialogs\Relay\Relay_Dialog.razor" />
+    <_ContentIncludedByDefault Remove="Components\Pages\Devices\Dialogs\Relay\Relay_Manager_Dialog.razor" />
+    <_ContentIncludedByDefault Remove="wwwroot\css\performance-optimizations.css" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <AdditionalFiles Include="Components\Layout\Relay\Relay_Manager_Dialog.razor" />
   </ItemGroup>
 </Project>

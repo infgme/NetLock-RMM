@@ -12,9 +12,17 @@ using System.Diagnostics;
 using System.Globalization;
 using Windows.Helper.ScreenControl;
 using System.Runtime.InteropServices;
+using System.Security;
+using System.Text.RegularExpressions;
 using Windows.Helper;
 using Global.Configuration;
 using Global.Encryption;
+using NetLock_RMM_Agent_Remote.Relay;
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
+using System.Threading.Channels;
+using Linux.Helper;
+using MacOS.Helper;
 
 namespace NetLock_RMM_Agent_Remote
 {
@@ -27,9 +35,11 @@ namespace NetLock_RMM_Agent_Remote
         // Server communication
         public static string remote_server = string.Empty;
         public static string file_server = string.Empty;
+        public static string relay_server = string.Empty;
         
         public static bool remote_server_status = false;
         public static bool file_server_status = false;
+        public static bool relay_server_status = false;
         
         // Local Server
         private const int Port = 7337;
@@ -49,7 +59,7 @@ namespace NetLock_RMM_Agent_Remote
         private Timer user_process_monitoringCheckTimer;
 
         // Tray icon process monitoring
-        //private Timer tray_icon_process_monitoringCheckTimer; currently disabled to prevent ghosting issues
+        private Timer tray_icon_process_monitoringCheckTimer;
         
         // Get server config timer
         private Timer serverConfigCheckTimer;
@@ -70,6 +80,40 @@ namespace NetLock_RMM_Agent_Remote
         
         // Process monitoring flags
         private bool _isCheckingUserProcesses = false;
+        
+        // Relay Connection Management (Type 14)
+        private ConcurrentDictionary<string, CancellationTokenSource> _activeRelaySessions = new ConcurrentDictionary<string, CancellationTokenSource>();
+        
+        // E2EE: Session-based Agent Keypairs (reused per session)
+        private ConcurrentDictionary<string, (System.Security.Cryptography.RSA rsa, string publicKeyPem)> _sessionKeypairs = new ConcurrentDictionary<string, (System.Security.Cryptography.RSA, string)>();
+
+        // Response Queue System - for sending responses back to the server in background threads
+        private readonly ConcurrentDictionary<string, ResponseQueueItem> _responseQueue = new ConcurrentDictionary<string, ResponseQueueItem>();
+        private readonly BlockingCollection<string> _responseReadyQueue = new BlockingCollection<string>();
+        private CancellationTokenSource _responseQueueCancellationTokenSource;
+        private Task _responseQueueProcessorTask;
+
+        // Input Command Queue System - High-priority channel for mouse/keyboard commands
+        // Uses System.Threading.Channels for lock-free, high-performance message passing
+        private Channel<InputCommand> _inputCommandChannel;
+        private CancellationTokenSource _inputCommandCancellationTokenSource;
+        private Task _inputCommandProcessorTask;
+
+        private class InputCommand
+        {
+            public string TargetUser { get; set; }
+            public string JsonPayload { get; set; }
+            public string ResponseId { get; set; }
+        }
+
+        private class ResponseQueueItem
+        {
+            public string ResponseId { get; set; }
+            public string Result { get; set; }
+            public bool IsComplete { get; set; }
+            public DateTime CreatedAt { get; set; }
+            public bool IsSent { get; set; }
+        }
 
         public class Device_Identity
         {
@@ -138,6 +182,12 @@ namespace NetLock_RMM_Agent_Remote
                         if (Agent.debug_mode)
                             Logging.Debug("Service.OnStart", "Service started", "Information");
                         
+                        // Start the response queue processor for handling SignalR responses
+                        StartResponseQueueProcessor();
+                        
+                        // Start the input command processor for high-priority mouse/keyboard commands
+                        StartInputCommandProcessor();
+                        
                         await LoadServerConfig();
 
                         // Start the timer to check the local server connection status every 15 seconds
@@ -152,11 +202,11 @@ namespace NetLock_RMM_Agent_Remote
                         
                         // Start the timer to check the user process status every 1 minute
                         user_process_monitoringCheckTimer = new Timer(async (e) => await CheckUserProcessStatus(), null,
-                            TimeSpan.Zero, TimeSpan.FromSeconds(30));
+                            TimeSpan.Zero, TimeSpan.FromSeconds(5));
                         
                         // Start the timer to check the tray icon process status every 1 minute
-                        //tray_icon_process_monitoringCheckTimer = new Timer(async (e) => await CheckTrayIconProcessStatus(), null,
-                          //  TimeSpan.Zero, TimeSpan.FromMinutes(1));
+                        tray_icon_process_monitoringCheckTimer = new Timer(async (e) => await CheckTrayIconProcessStatus(), null,
+                          TimeSpan.Zero, TimeSpan.FromMinutes(1));
                         
                         // Start the timer to reload the server config every 1 minute
                         serverConfigCheckTimer = new Timer(async (e) => await LoadServerConfig(),
@@ -184,6 +234,10 @@ namespace NetLock_RMM_Agent_Remote
 
                 await Task.Delay(1000, stoppingToken);
             }
+            
+            // Cleanup when service is stopping
+            StopInputCommandProcessor();
+            StopResponseQueueProcessor();
         }
 
         #region Comm Agent Local Server 
@@ -196,17 +250,17 @@ namespace NetLock_RMM_Agent_Remote
 
                 _stream = local_server_client.GetStream();
                 _ = Local_Server_Handle_Server_Messages(_cancellationTokenSource.Token);
-if (Agent.debug_mode)
-    Logging.Debug("Service.Local_Server_Connect", "Connected to the local server.", "");
+                
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.Local_Server_Connect", "Connected to the local server.", "");
 
 
                 // Previously used for initial device identity request. Removed that, but logic stays in place for future use cases.
             }
             catch (Exception ex)
             {
-if (Agent.debug_mode)
-    Logging.Error("Service.Local_Server_Connect", "Failed to connect to the local server.", ex.ToString());
-
+                if (Agent.debug_mode)
+                    Logging.Error("Service.Local_Server_Connect", "Failed to connect to the local server.", ex.ToString());
             }
         }
 
@@ -306,6 +360,384 @@ if (Agent.debug_mode)
         
         #endregion
 
+        #region Response Queue System
+
+        /// <summary>
+        /// Starts the response queue processor that runs in the background and sends completed responses to the server.
+        /// </summary>
+        private void StartResponseQueueProcessor()
+        {
+            _responseQueueCancellationTokenSource = new CancellationTokenSource();
+            _responseQueueProcessorTask = Task.Run(async () => await ProcessResponseQueue(_responseQueueCancellationTokenSource.Token));
+            
+            if (Agent.debug_mode)
+                Logging.Debug("Service.ResponseQueue", "Response queue processor started", "");
+        }
+
+        /// <summary>
+        /// Stops the response queue processor.
+        /// </summary>
+        private void StopResponseQueueProcessor()
+        {
+            try
+            {
+                _responseQueueCancellationTokenSource?.Cancel();
+                _responseReadyQueue.CompleteAdding();
+                _responseQueueProcessorTask?.Wait(TimeSpan.FromSeconds(5));
+                
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.ResponseQueue", "Response queue processor stopped", "");
+            }
+            catch (Exception ex)
+            {
+                Logging.Error("Service.ResponseQueue", "Error stopping response queue processor", ex.ToString());
+            }
+        }
+
+        /// <summary>
+        /// Registers a response_id in the queue. Call this when you start processing a command.
+        /// </summary>
+        /// <param name="responseId">The response ID to register</param>
+        public void RegisterResponse(string responseId)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(responseId))
+                    return;
+
+                var item = new ResponseQueueItem
+                {
+                    ResponseId = responseId,
+                    Result = null,
+                    IsComplete = false,
+                    CreatedAt = DateTime.UtcNow,
+                    IsSent = false
+                };
+
+                _responseQueue.TryAdd(responseId, item);
+            
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.ResponseQueue", "Response registered", $"response_id: {responseId}");
+            }
+            catch (Exception e)
+            {
+                Logging.Error("Service.ResponseQueue", "Failed to register response", $"response_id: {responseId}, error: {e.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Completes a response by adding the result. This will trigger sending the response to the server.
+        /// </summary>
+        /// <param name="responseId">The response ID</param>
+        /// <param name="result">The result to send back to the server</param>
+        public void CompleteResponse(string responseId, string result)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(responseId))
+                    return;
+
+                // If not registered yet, register it first
+                if (!_responseQueue.ContainsKey(responseId))
+                {
+                    RegisterResponse(responseId);
+                }
+
+                if (_responseQueue.TryGetValue(responseId, out var item))
+                {
+                    item.Result = result;
+                    item.IsComplete = true;
+                
+                    // Signal the processor that this response is ready
+                    try
+                    {
+                        _responseReadyQueue.Add(responseId);
+                    
+                        if (Agent.debug_mode)
+                            Logging.Debug("Service.ResponseQueue", "Response completed and queued for sending", 
+                                $"response_id: {responseId}, result_length: {result?.Length ?? 0}");
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // Queue is completed, can't add more items
+                        if (Agent.debug_mode)
+                            Logging.Debug("Service.ResponseQueue", "Response queue is closed, cannot add response", 
+                                $"response_id: {responseId}");
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Logging.Error("Service.ResponseQueue", "Failed to complete response", $"response_id: {responseId}, error: {e.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Processes the response queue and sends completed responses to the server.
+        /// </summary>
+        private async Task ProcessResponseQueue(CancellationToken cancellationToken)
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    // Wait for a response to be ready (blocking with cancellation support)
+                    string responseId;
+                    try
+                    {
+                        responseId = _responseReadyQueue.Take(cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // Collection is completed
+                        break;
+                    }
+
+                    if (_responseQueue.TryGetValue(responseId, out var item) && item.IsComplete && !item.IsSent)
+                    {
+                        // Only send if result is not null/empty
+                        if (!string.IsNullOrEmpty(item.Result))
+                        {
+                            try
+                            {
+                                // Wait for connection to be available
+                                int retryCount = 0;
+                                while (remote_server_client == null || 
+                                       remote_server_client.State != HubConnectionState.Connected)
+                                {
+                                    if (cancellationToken.IsCancellationRequested)
+                                        break;
+                                    
+                                    retryCount++;
+                                    if (retryCount > 30) // Max 30 seconds wait
+                                    {
+                                        Logging.Error("Service.ResponseQueue", "Timeout waiting for server connection", 
+                                            $"response_id: {responseId}");
+                                        break;
+                                    }
+                                    
+                                    await Task.Delay(1000, cancellationToken);
+                                }
+
+                                if (remote_server_client?.State == HubConnectionState.Connected)
+                                {
+                                    if (Agent.debug_mode)
+                                        Logging.Debug("Service.ResponseQueue", "Sending response to server", 
+                                            $"response_id: {responseId}, result_length: {item.Result.Length}");
+
+                                    await remote_server_client.InvokeAsync("ReceiveClientResponse", 
+                                        responseId, item.Result, false, cancellationToken);
+
+                                    item.IsSent = true;
+                                    
+                                    if (Agent.debug_mode)
+                                        Logging.Debug("Service.ResponseQueue", "Response sent successfully", 
+                                            $"response_id: {responseId}");
+
+                                    // Remove from queue after successful send
+                                    _responseQueue.TryRemove(responseId, out _);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Logging.Error("Service.ResponseQueue", "Failed to send response", 
+                                    $"response_id: {responseId}, error: {ex.Message}");
+                                
+                                // Re-queue for retry if not cancelled
+                                if (!cancellationToken.IsCancellationRequested)
+                                {
+                                    try
+                                    {
+                                        await Task.Delay(2000, cancellationToken);
+                                        _responseReadyQueue.Add(responseId);
+                                    }
+                                    catch { }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Result is empty, just remove from queue
+                            _responseQueue.TryRemove(responseId, out _);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (!cancellationToken.IsCancellationRequested)
+                    {
+                        Logging.Error("Service.ResponseQueue", "Error in response queue processor", ex.ToString());
+                        await Task.Delay(1000, cancellationToken);
+                    }
+                }
+            }
+
+            // Cleanup remaining items
+            _responseQueue.Clear();
+            
+            if (Agent.debug_mode)
+                Logging.Debug("Service.ResponseQueue", "Response queue processor exited", "");
+        }
+
+        /// <summary>
+        /// Cleans up old responses that haven't been sent (e.g., orphaned entries).
+        /// Call this periodically if needed.
+        /// </summary>
+        public void CleanupOldResponses(TimeSpan maxAge)
+        {
+            try
+            {
+                var cutoffTime = DateTime.UtcNow - maxAge;
+                var oldKeys = _responseQueue.Where(kvp => kvp.Value.CreatedAt < cutoffTime && !kvp.Value.IsSent)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+            
+                foreach (var key in oldKeys)
+                {
+                    _responseQueue.TryRemove(key, out _);
+                
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.ResponseQueue", "Removed old response", $"response_id: {key}");
+                }
+            }
+            catch (Exception e)
+            {
+                Logging.Error("Service.ResponseQueue", "Failed to cleanup old responses", $"error: {e.Message}");
+                throw;
+            }
+        }
+
+        #endregion
+
+        #region Input Command Queue System (Mouse/Keyboard)
+
+        /// <summary>
+        /// Starts the input command processor that handles mouse/keyboard commands with high priority.
+        /// Uses System.Threading.Channels for lock-free, high-performance processing.
+        /// </summary>
+        private void StartInputCommandProcessor()
+        {
+            // Create an unbounded channel for maximum throughput
+            // Single consumer ensures commands are processed in order
+            _inputCommandChannel = Channel.CreateUnbounded<InputCommand>(new UnboundedChannelOptions
+            {
+                SingleReader = true,  // Only one processor reads from the channel
+                SingleWriter = false, // Multiple SignalR handlers can write
+                AllowSynchronousContinuations = true // Better performance for quick operations
+            });
+
+            _inputCommandCancellationTokenSource = new CancellationTokenSource();
+            _inputCommandProcessorTask = Task.Run(async () => 
+                await ProcessInputCommands(_inputCommandCancellationTokenSource.Token));
+            
+            if (Agent.debug_mode)
+                Logging.Debug("Service.InputCommandQueue", "Input command processor started", "");
+        }
+
+        /// <summary>
+        /// Stops the input command processor.
+        /// </summary>
+        private void StopInputCommandProcessor()
+        {
+            try
+            {
+                _inputCommandChannel?.Writer.Complete();
+                _inputCommandCancellationTokenSource?.Cancel();
+                _inputCommandProcessorTask?.Wait(TimeSpan.FromSeconds(2));
+                
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.InputCommandQueue", "Input command processor stopped", "");
+            }
+            catch (Exception ex)
+            {
+                Logging.Error("Service.InputCommandQueue", "Error stopping input command processor", ex.ToString());
+            }
+        }
+
+        /// <summary>
+        /// Queues an input command (mouse/keyboard) for high-priority processing.
+        /// This method returns immediately - the command is processed asynchronously.
+        /// </summary>
+        /// <param name="targetUser">The target user to send the command to</param>
+        /// <param name="jsonPayload">The JSON payload containing the command</param>
+        /// <param name="responseId">Optional response ID for tracking</param>
+        public void QueueInputCommand(string targetUser, string jsonPayload, string responseId = null)
+        {
+            if (_inputCommandChannel == null)
+            {
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.InputCommandQueue", "Channel not initialized, executing directly", "");
+                
+                // Fallback: execute directly if channel not ready
+                _ = Task.Run(async () => await SendToClient(targetUser, jsonPayload));
+                return;
+            }
+
+            var command = new InputCommand
+            {
+                TargetUser = targetUser,
+                JsonPayload = jsonPayload,
+                ResponseId = responseId
+            };
+
+            // TryWrite is non-blocking and returns immediately
+            if (!_inputCommandChannel.Writer.TryWrite(command))
+            {
+                // Channel is full or completed - fallback to direct execution
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.InputCommandQueue", "Channel full, executing directly", "");
+                
+                _ = Task.Run(async () => await SendToClient(targetUser, jsonPayload));
+            }
+        }
+
+        /// <summary>
+        /// Processes input commands from the channel.
+        /// Runs on a dedicated thread for maximum responsiveness.
+        /// </summary>
+        private async Task ProcessInputCommands(CancellationToken cancellationToken)
+        {
+            try
+            {
+                await foreach (var command in _inputCommandChannel.Reader.ReadAllAsync(cancellationToken))
+                {
+                    try
+                    {
+                        // Process the command immediately
+                        await SendToClient(command.TargetUser, command.JsonPayload);
+                        
+                        // If there's a response ID and we need to confirm, we could do it here
+                        // For now, input commands don't typically need responses
+                    }
+                    catch (Exception ex)
+                    {
+                        if (Agent.debug_mode)
+                            Logging.Error("Service.InputCommandQueue", "Error processing input command", 
+                                $"target: {command.TargetUser}, error: {ex.Message}");
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Normal cancellation
+            }
+            catch (Exception ex)
+            {
+                Logging.Error("Service.InputCommandQueue", "Input command processor crashed", ex.ToString());
+            }
+            
+            if (Agent.debug_mode)
+                Logging.Debug("Service.InputCommandQueue", "Input command processor exited", "");
+        }
+
+        #endregion
+
         #region SignalR Remote Server
         
         private readonly SemaphoreSlim _signalRConnectionLock = new SemaphoreSlim(1, 1);
@@ -333,10 +765,11 @@ if (Agent.debug_mode)
                     }
                 }
                 
-                if (!string.IsNullOrEmpty(device_identity_json))
+                if (_agentSettingsRemoteServiceEnabled && !string.IsNullOrEmpty(device_identity_json))
                 {
                     // Prevents multiple simultaneous connection attempts (in place to test remote screen control keyboard ghosting) https://github.com/0x101-Cyber-Security/NetLock-RMM/issues/89
                     await _signalRConnectionLock.WaitAsync();
+                    
                     try
                     {
                         if (_signalRConnecting)
@@ -415,10 +848,6 @@ if (Agent.debug_mode)
                         };
                     }).ConfigureLogging(logging =>
                     {
-                        if (OperatingSystem.IsWindows())
-                            if (Agent.debug_mode)
-                                logging.AddEventLog();
-
                         if (Agent.debug_mode) 
                             logging.AddConsole();
 
@@ -446,23 +875,24 @@ if (Agent.debug_mode)
 
                     // Connection established, no further action needed
                 });
-                
+
                 remote_server_client.On<string>("SendMessageToClient", async (command) =>
                 {
                     if (Agent.debug_mode)
                         Logging.Debug("Service.Setup_SignalR", "SendMessageToClient", command);
-                    
+
                     // Deserialisation of the entire JSON string
                     Command_Entity command_object = JsonSerializer.Deserialize<Command_Entity>(command);
 
                     try
                     {
                         // Insert the logic here to execute the command
-                        if (command_object.type == 61 && _agentSettingsRemoteScreenControlEnabled) // Tray Icon - Hide chat window
+                        if (command_object.type == 61 &&
+                            _agentSettingsRemoteScreenControlEnabled) // Tray Icon - Hide chat window
                         {
                             if (Agent.debug_mode)
                                 Logging.Debug("Service.Setup_SignalR", "Tray icon command", command_object.command);
-                            
+
                             //  Create the JSON object
                             var jsonObject = new
                             {
@@ -471,13 +901,12 @@ if (Agent.debug_mode)
                             };
 
                             // Convert the object into a JSON string
-                            string json = JsonSerializer.Serialize(jsonObject, new JsonSerializerOptions { WriteIndented = true });
+                            string json = JsonSerializer.Serialize(jsonObject,
+                                new JsonSerializerOptions { WriteIndented = true });
 
                             if (Agent.debug_mode)
-
                                 Logging.Debug("Service.Setup_SignalR", "Remote Control json", json);
-
-
+                            
                             // Send through local server to tray icon user process
                             await SendToClient(command_object.remote_control_username + "tray", json);
                         }
@@ -485,7 +914,7 @@ if (Agent.debug_mode)
                         {
                             if (Agent.debug_mode)
                                 Logging.Debug("Service.Setup_SignalR", "Tray icon command", command_object.command);
-                            
+
                             //  Create the JSON object
                             var jsonObject = new
                             {
@@ -494,19 +923,21 @@ if (Agent.debug_mode)
                             };
 
                             // Convert the object into a JSON string
-                            string json = JsonSerializer.Serialize(jsonObject, new JsonSerializerOptions { WriteIndented = true });
-                            
+                            string json = JsonSerializer.Serialize(jsonObject,
+                                new JsonSerializerOptions { WriteIndented = true });
+
                             if (Agent.debug_mode)
                                 Logging.Debug("Service.Setup_SignalR", "Remote Control json", json);
 
                             // Send through local server to tray icon user process
                             await SendToClient(command_object.remote_control_username + "tray", json);
                         }
-                        else if (command_object.type == 63 && _agentSettingsRemoteScreenControlEnabled) // Tray Icon - Exit chat window
+                        else if (command_object.type == 63 &&
+                                 _agentSettingsRemoteScreenControlEnabled) // Tray Icon - Exit chat window
                         {
                             if (Agent.debug_mode)
                                 Logging.Debug("Service.Setup_SignalR", "Tray icon command", command_object.command);
-                            
+
                             //  Create the JSON object
                             var jsonObject = new
                             {
@@ -515,21 +946,22 @@ if (Agent.debug_mode)
                             };
 
                             // Convert the object into a JSON string
-                            string json = JsonSerializer.Serialize(jsonObject, new JsonSerializerOptions { WriteIndented = true });
-                            
+                            string json = JsonSerializer.Serialize(jsonObject,
+                                new JsonSerializerOptions { WriteIndented = true });
+
                             if (Agent.debug_mode)
                                 Logging.Debug("Service.Setup_SignalR", "Remote Control json", json);
-
 
                             // Send through local server to tray icon user process
                             await SendToClient(command_object.remote_control_username + "tray", json);
                         }
-                        else if (command_object.type == 64 && _agentSettingsRemoteScreenControlEnabled) // Tray Icon - Send message
+                        else if (command_object.type == 64 &&
+                                 _agentSettingsRemoteScreenControlEnabled) // Tray Icon - Send message
                         {
                             if (Agent.debug_mode)
                                 Logging.Debug("Service.Setup_SignalR", "Tray icon command", command_object.command);
- 
-                            
+
+
                             //  Create the JSON object
                             var jsonObject = new
                             {
@@ -539,22 +971,23 @@ if (Agent.debug_mode)
                             };
 
                             // Convert the object into a JSON string
-                            string json = JsonSerializer.Serialize(jsonObject, new JsonSerializerOptions { WriteIndented = true });
-                            
+                            string json = JsonSerializer.Serialize(jsonObject,
+                                new JsonSerializerOptions { WriteIndented = true });
+
                             if (Agent.debug_mode)
                                 Logging.Debug("Service.Setup_SignalR", "Remote Control json", json);
-
-
+                            
                             // Send through local server to tray icon user process
                             await SendToClient(command_object.remote_control_username + "tray", json);
                         }
-                        else if (command_object.type == 8 && _agentSettingsRemoteScreenControlEnabled) // End remote screen control access
+                        else if (command_object.type == 8 &&
+                                 _agentSettingsRemoteScreenControlEnabled) // End remote screen control access
                         {
 
                             if (Agent.debug_mode)
                                 Logging.Debug("Service.Setup_SignalR", "Tray icon command", command_object.command);
- 
-                            
+
+
                             //  Create the JSON object
                             var jsonObject = new
                             {
@@ -564,25 +997,167 @@ if (Agent.debug_mode)
                             };
 
                             // Convert the object into a JSON string
-                            string json = JsonSerializer.Serialize(jsonObject, new JsonSerializerOptions { WriteIndented = true });
-                            
+                            string json = JsonSerializer.Serialize(jsonObject,
+                                new JsonSerializerOptions { WriteIndented = true });
+
                             if (Agent.debug_mode)
                                 Logging.Debug("Service.Setup_SignalR", "Remote Control json", json);
-                            
+
                             // Send through local server to tray icon user process
                             await SendToClient(command_object.remote_control_username + "tray", json);
-                            
+
                             // Remove user from allowed remote screen control users
                             _remoteScreenControlGrantedUsers.Remove(command_object.remote_control_username);
-                            
+
                             Logging.Debug("Service.Setup_SignalR", "Remote Control access ended for user",
                                 command_object.remote_control_username);
+                        }
+                        else if (command_object.type == 14) // Relay Connection Request
+                        {
+                            try
+                            {
+                                //Console.WriteLine($"[RELAY] Received Relay Connection Request");
+                                // Parse relay details from command field
+                                var relayDetails =
+                                    JsonSerializer.Deserialize<RelayConnectionDetails>(command_object.command);
+
+                                if (relayDetails == null)
+                                {
+                                    if (Agent.debug_mode)
+                                        Logging.Error("Service.Setup_SignalR",
+                                            "Failed to parse relay connection details", "relayDetails is null");
+                                    return;
+                                }
+
+                                // Check if session already exists AND is still active
+                                if (_activeRelaySessions.TryGetValue(relayDetails.session_id, out var existingCts))
+                                {
+                                    // Check if old session is still running or already cancelled
+                                    bool isOldSessionActive = !existingCts.IsCancellationRequested;
+
+                                    //Console.WriteLine($"[RELAY] Session {relayDetails.session_id} exists in dictionary - checking status...");
+                                    //Console.WriteLine($"[RELAY] Old session active: {isOldSessionActive} (CTS cancelled: {existingCts.IsCancellationRequested})");
+
+                                    if (Agent.debug_mode)
+                                        Logging.Debug("Service.Setup_SignalR", "Relay session exists - checking status",
+                                            $"session_id: {relayDetails.session_id}, active: {isOldSessionActive}");
+                                    
+                                    // Case 1: Old session is still active AND new Admin Public Key present -> Admin change
+                                    if (isOldSessionActive && !string.IsNullOrEmpty(relayDetails.admin_public_key))
+                                    {
+                                        //Console.WriteLine($"[RELAY] Admin Public Key detected - ADMIN CHANGE - closing old connection...");
+
+                                        if (Agent.debug_mode)
+                                            Logging.Debug("Service.Setup_SignalR", "Admin change detected - closing old connection",
+                                                $"session_id: {relayDetails.session_id}");
+                                        
+                                        // End old relay connection
+                                        existingCts.Cancel();
+                                        _activeRelaySessions.TryRemove(relayDetails.session_id, out _);
+                                        
+                                        // Wait 2 seconds for backend + agent to completely clean up
+                                        //Console.WriteLine($"[RELAY] Waiting 2 seconds for complete cleanup (Admin kick)...");
+                                        await Task.Delay(2000);
+                                        //Console.WriteLine($"[RELAY] Cleanup delay complete");
+
+                                        //Console.WriteLine($"[RELAY] Old connection closed - starting NEW connection with new Admin Key");
+
+                                        if (Agent.debug_mode)
+                                            Logging.Debug("Service.Setup_SignalR", "Old connection closed - reconnecting with new Admin",
+                                                $"session_id: {relayDetails.session_id}");
+                                    }
+                                    // Case 2: Old session is DEAD (cancelled) -> Cleanup finished, reconnect
+                                    else if (!isOldSessionActive)
+                                    {
+                                        //Console.WriteLine($"[RELAY] Old session is dead (cancelled) - removing from dictionary and reconnecting...");
+
+                                        if (Agent.debug_mode)
+                                            Logging.Debug("Service.Setup_SignalR", "Old session dead - cleanup and reconnect",
+                                                $"session_id: {relayDetails.session_id}");
+
+                                        // Remove dead session from dictionary
+                                        _activeRelaySessions.TryRemove(relayDetails.session_id, out _);
+
+                                        // Short delay for final cleanup
+                                        await Task.Delay(500);
+
+                                        //Console.WriteLine($"[RELAY] Dead session cleaned - starting NEW connection");
+                                    }
+                                    // Case 3: Old session active, NO Admin Public Key -> Duplicate, ignore
+                                    else
+                                    {
+                                        //Console.WriteLine($"[RELAY] Session active and no Admin Key in command - ignoring duplicate");
+
+                                        if (Agent.debug_mode)
+                                            Logging.Debug("Service.Setup_SignalR", "Duplicate request - ignoring",
+                                                $"session_id: {relayDetails.session_id}");
+                                        return;
+                                    }
+                                }
+
+                                if (Agent.debug_mode)
+                                    Logging.Debug("Service.Setup_SignalR", "Relay Connection Request",
+                                        $"session_id: {relayDetails.session_id}, local_port: {relayDetails.local_port}, protocol: {relayDetails.protocol}");
+
+                                // Connect to relay server (new or after admin change)
+                                _ = Task.Run((Func<Task>)(async () => await ConnectToRelayServer(
+                                    relayDetails
+                                )));
+                            }
+                            catch (Exception ex)
+                            {
+                                Logging.Error("Service.Setup_SignalR", "Failed to initiate relay connection",
+                                    ex.ToString());
+                            }
+                        }
+                        else if (command_object.type == 16) // Relay Close Connection
+                        {
+                            try
+                            {
+                                // Parse session_id aus command-Feld
+                                var closeDetails =
+                                    JsonSerializer.Deserialize<RelayCloseDetails>(command_object.command);
+
+                                if (closeDetails == null || string.IsNullOrEmpty(closeDetails.session_id))
+                                {
+                                    if (Agent.debug_mode)
+                                        Logging.Error("Service.Setup_SignalR", "Failed to parse relay close details",
+                                            "closeDetails is null or session_id is missing");
+                                    return;
+                                }
+
+                                if (Agent.debug_mode)
+                                    Logging.Debug("Service.Setup_SignalR", "Relay Close Connection",
+                                        $"session_id: {closeDetails.session_id}");
+
+                                if (_activeRelaySessions.TryRemove(closeDetails.session_id, out var cts))
+                                {
+                                    cts.Cancel();
+                                    cts.Dispose();
+
+                                    if (Agent.debug_mode)
+                                        Logging.Debug("Service.Setup_SignalR", "Relay connection closed",
+                                            closeDetails.session_id);
+                                }
+                                else
+                                {
+                                    if (Agent.debug_mode)
+                                        Logging.Debug("Service.Setup_SignalR", "Relay session not found",
+                                            closeDetails.session_id);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Logging.Error("Service.Setup_SignalR", "Failed to close relay connection",
+                                    ex.ToString());
+                            }
                         }
                     }
                     catch (Exception ex)
                     {
                         if (Agent.debug_mode)
-                            Logging.Error("Service.Setup_SignalR", "Failed to deserialize command object.", ex.ToString());
+                            Logging.Error("Service.Setup_SignalR", "Failed to deserialize command object.",
+                                ex.ToString());
                     }
 
                     // Example: If the command is "sync", send a message to the local server to force a sync with the remote server
@@ -607,7 +1182,7 @@ if (Agent.debug_mode)
                         if (command_object.type == 0 && _agentSettingsRemoteShellEnabled) // Remote Shell
                         {
                             if (OperatingSystem.IsWindows())
-                                result = Windows.Helper.PowerShell.Execute_Script(command_object.type.ToString(),
+                                result = Windows.Helper.PowerShell.Execute_Command("Remote Shell",
                                     command_object.powershell_code, Convert.ToInt32(command_object.command));
                             else if (OperatingSystem.IsLinux())
                                 result = Linux.Helper.Bash.Execute_Script("Remote Shell", true,
@@ -830,15 +1405,15 @@ if (Agent.debug_mode)
                                         remote_control_keyboard_content = command_object.remote_control_keyboard_content,
                                     };
 
-                                    // Convert the object into a JSON string
-                                    string json = JsonSerializer.Serialize(jsonObject,
-                                        new JsonSerializerOptions { WriteIndented = true });
+                                    // Convert the object into a JSON string (use minimal formatting for performance)
+                                    string json = JsonSerializer.Serialize(jsonObject);
                                     
                                     if (Agent.debug_mode)
                                         Logging.Debug("Service.Setup_SignalR", "Remote Control json", json);
 
-                                    // Send through local SignalR Hub to User
-                                    await SendToClient(command_object.remote_control_username, json);
+                                    // Use the high-priority input command queue for mouse/keyboard commands
+                                    // This prevents input commands from being blocked by screen capture or other operations
+                                    QueueInputCommand(command_object.remote_control_username, json, command_object.response_id);
                                 }
                                 catch (Exception ex)
                                 {
@@ -1180,6 +1755,76 @@ if (Agent.debug_mode)
                                 }
                             }
                         }
+                        else if (command_object.type == 15) // Virtual Display Management
+                        {
+                            try
+                            {
+                                if (!OperatingSystem.IsWindows())
+                                {
+                                    if (Agent.debug_mode)
+                                        Logging.Debug("Service.Setup_SignalR", "Virtual Display not supported", "Only available on Windows");
+                                    
+                                    result = "Virtual display driver is only supported on Windows";
+                                }
+                                else
+                                {
+                                    // Parse command JSON
+                                    using (JsonDocument doc = JsonDocument.Parse(command_object.command))
+                                    {
+                                        var root = doc.RootElement;
+                                        string action = root.GetProperty("action").GetString();
+
+                                        if (Agent.debug_mode)
+                                            Logging.Debug("Service.Setup_SignalR", "Virtual Display Command", $"Action: {action}");
+                                        
+                                        // Fire-and-Forget: Execute in background and send result when done
+                                        var responseId = command_object.response_id;
+                                        var rootElementCopy = root.Clone();
+                                        
+                                        _ = Task.Run(async () =>
+                                        {
+                                            string taskResult;
+                                            try
+                                            {
+                                                taskResult = action switch
+                                                {
+                                                    "checkStatus" => await Windows.Helper.ScreenControl.VirtualDisplayDriver.CheckStatus(),
+                                                    "install" => await Windows.Helper.ScreenControl.VirtualDisplayDriver.InstallDriver(),
+                                                    "uninstall" => await Windows.Helper.ScreenControl.VirtualDisplayDriver.UninstallDriver(),
+                                                    "applyConfig" => await Windows.Helper.ScreenControl.VirtualDisplayDriver.ApplyConfig(
+                                                        rootElementCopy.TryGetProperty("configBase64", out var cfg) ? cfg.GetString() ?? "" : ""
+                                                    ),
+                                                    _ => $"Unknown action: {action}"
+                                                };
+
+                                                if (Agent.debug_mode)
+                                                    Logging.Debug("Service.Setup_SignalR", "Virtual Display Result", taskResult);
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                taskResult = $"Error: {ex.Message}";
+                                                Logging.Error("Service.Setup_SignalR", "Virtual Display background task error", ex.ToString());
+                                            }
+
+                                            // Send result back to server using the response queue system
+                                            CompleteResponse(responseId, taskResult);
+                                            
+                                            if (Agent.debug_mode)
+                                                Logging.Debug("Service.Setup_SignalR", "Virtual Display response queued", taskResult);
+                                        });
+                                        
+                                        // Setze result auf null, damit der untere Block keine Antwort sendet
+                                        // (die Antwort wird im Background-Task gesendet)
+                                        result = null;
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Logging.Error("Service.Setup_SignalR", "Failed to execute virtual display command", ex.ToString());
+                                result = $"Error: {ex.Message}";
+                            }
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -1188,18 +1833,15 @@ if (Agent.debug_mode)
                             ex.ToString());
                     }
 
-                    // Send the response back to the server (if we execute a single operation that doesnt require a response, we need to return the operation in that method to prevent this from executing)
-                    if (!String.IsNullOrEmpty(command_object.type.ToString()))
+                    // Send the response back to the server using the response queue system
+                    // (if we execute a single operation that doesnt require a response, we need to set result to null in that operation to prevent this from executing)
+                    if (!String.IsNullOrEmpty(result))
                     {
-                        if (String.IsNullOrEmpty(result))
-                            result = "Command executed. No result returned.";
-
-                        Logging.Debug("Client", "Sending response back to the server",
-                            "result: " + result + "response_id: " + command_object.response_id);
-                        await remote_server_client.InvokeAsync("ReceiveClientResponse", command_object.response_id,
-                            result, false);
-                        Logging.Debug("Client", "Response sent back to the server",
-                            "result: " + result + "response_id: " + command_object.response_id);
+                        if (Agent.debug_mode)
+                            Logging.Debug("Client", "Queuing response for server",
+                                "result_length: " + result?.Length + " response_id: " + command_object.response_id);
+                        
+                        CompleteResponse(command_object.response_id, result);
                     }
 
                     await Task.CompletedTask;
@@ -1224,15 +1866,39 @@ if (Agent.debug_mode)
 
         #region User agent process monitoring
 
+        // Cache for known running process PIDs - avoids repeated full process scans
+        private int _cachedSystemProcessPid = -1;
+        private readonly ConcurrentDictionary<uint, int> _cachedUserProcessPids = new ConcurrentDictionary<uint, int>(); // SessionId -> PID (Windows)
+        private readonly ConcurrentDictionary<string, int> _cachedLinuxUserProcessPids = new ConcurrentDictionary<string, int>(); // Username -> PID (Linux)
+        private readonly ConcurrentDictionary<string, int> _cachedMacOSUserProcessPids = new ConcurrentDictionary<string, int>(); // Username -> PID (macOS)
+
         private async Task CheckUserProcessStatus()
         {
-            if (!OperatingSystem.IsWindows()) return;
+            if (OperatingSystem.IsWindows())
+            {
+                await CheckUserProcessStatus_Windows();
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                //await CheckUserProcessStatus_Linux();
+            }
+            else if (OperatingSystem.IsMacOS())
+            {
+                //await CheckUserProcessStatus_MacOS();
+            }
+        }
 
+        /// <summary>
+        /// Windows-specific implementation for user process monitoring.
+        /// Starts user agent processes in logged-in user sessions.
+        /// </summary>
+        private async Task CheckUserProcessStatus_Windows()
+        {
             // Prevent multiple simultaneous executions
             if (_isCheckingUserProcesses)
             {
                 if (Agent.debug_mode)
-                    Logging.Debug("Service.CheckUserProcess", "Already checking processes, skipping", "");
+                    Logging.Debug("Service.CheckUserProcess.Windows", "Already checking processes, skipping", "");
                 return;
             }
 
@@ -1240,183 +1906,174 @@ if (Agent.debug_mode)
 
             try
             {
-                // Hole alle aktiven Sessions (inkl. Anmeldebildschirm)
+                // First check if cached processes are still running
+                bool systemProcessRunning = IsCachedProcessRunning(_cachedSystemProcessPid);
+                
+                // Get active sessions
                 var activeSessions = Windows.Helper.ScreenControl.WindowsSession.GetActiveSessions();
                 
-                if (Agent.debug_mode)
-                    Logging.Debug("Service.CheckUserProcess", "Active sessions found", $"Count: {activeSessions.Count}");
-
-                // Prüfe und starte NetLock_RMM_User_Process (System-Kontext) - nur einmal, unabhängig von Session
-                // Dieser Prozess läuft als SYSTEM und sollte nur einmal existieren
-                bool systemProcessRunning = false;
-                var systemProcesses = Process.GetProcessesByName("NetLock_RMM_User_Process");
-                
-                if (Agent.debug_mode)
-                    Logging.Debug("Service.CheckUserProcess", 
-                        "Checking system process", 
-                        $"Found {systemProcesses.Length} NetLock_RMM_User_Process instances");
-                
-                foreach (var process in systemProcesses)
-                {
-                    if (process != null && !process.HasExited)
-                    {
-                        // Prüfe Session-ID - SYSTEM Prozess sollte in Session 0 oder 1 laufen
-                        uint processSessionId = Windows.Helper.ScreenControl.WindowsSession.GetProcessSessionId(process.Id);
-                        
-                        if (Agent.debug_mode)
-                            Logging.Debug("Service.CheckUserProcess", 
-                                "Found system process instance", 
-                                $"PID: {process.Id}, SessionId: {processSessionId}, ProcessName: NetLock_RMM_User_Process");
-                        
-                        // Wenn wir mindestens einen SYSTEM-Prozess gefunden haben, ist er schon aktiv
-                        systemProcessRunning = true;
-                        break;
-                    }
-                }
-
-                if (!systemProcessRunning)
-                {
-                    if (Agent.debug_mode)
-                        Logging.Debug("Service.CheckUserProcess", 
-                            "Starting system process",
-                            $"ProcessName: NetLock_RMM_User_Process, Path: {Application_Paths.netlock_rmm_user_agent_path}");
-
-                    bool success = Windows.Helper.ScreenControl.Win32Interop.CreateInteractiveSystemProcess(
-                        commandLine: Application_Paths.netlock_rmm_user_agent_path,
-                        targetSessionId: 0, // System session
-                        hiddenWindow: false,
-                        out var procInfo
-                    );
-
-                    if (Agent.debug_mode)
-                        Logging.Debug("Service.CheckUserProcess", 
-                            "System process start result", 
-                            $"Success: {success}, ProcessName: NetLock_RMM_User_Process");
-                    
-                    // Warte kurz damit der Prozess Zeit hat zu starten
-                    if (success)
-                        await Task.Delay(500);
-                }
-                else if (Agent.debug_mode)
-                {
-                    Logging.Debug("Service.CheckUserProcess", 
-                        "System process already running, skipping start",
-                        $"ProcessName: NetLock_RMM_User_Process");
-                }
-
-                // Prüfe und starte User-Prozesse für jede angemeldete Session
+                // Check cached user processes
+                bool allUserProcessesRunning = true;
                 foreach (var sessionId in activeSessions)
                 {
-                    // Prüfe ob ein Benutzer angemeldet ist
-                    bool isUserLoggedIn = Windows.Helper.ScreenControl.WindowsSession.IsUserLoggedIntoSession(sessionId);
+                    if (sessionId == 0) continue;
+                    if (!Windows.Helper.ScreenControl.WindowsSession.IsUserLoggedIntoSession(sessionId)) continue;
                     
-                    // Nur für angemeldete User (nicht für Login-Bildschirm/Session 0)
-                    if (!isUserLoggedIn || sessionId == 0)
-                        continue;
+                    if (_cachedUserProcessPids.TryGetValue(sessionId, out int cachedPid))
+                    {
+                        if (!IsCachedProcessRunning(cachedPid))
+                        {
+                            _cachedUserProcessPids.TryRemove(sessionId, out _);
+                            allUserProcessesRunning = false;
+                        }
+                    }
+                    else
+                    {
+                        allUserProcessesRunning = false;
+                    }
+                }
+                
+                // FAST PATH: If all cached processes are still running, we're done!
+                if (systemProcessRunning && allUserProcessesRunning)
+                {
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.CheckUserProcess.Windows", "All cached processes still running", "Fast path - no enumeration needed");
+                    return;
+                }
 
-                    // Für angemeldete User: Starte NetLock_RMM_User_Process_UAC im User-Kontext
-                    string processName = "NetLock_RMM_User_Process_UAC";
-                    string processPath = Application_Paths.netlock_rmm_user_agent_uac_path;
+                // SLOW PATH: Need to enumerate processes - but only ONCE for all checks
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.CheckUserProcess.Windows", "Need process enumeration", 
+                        $"SystemRunning: {systemProcessRunning}, AllUserRunning: {allUserProcessesRunning}");
 
-                    bool processIsRunning = false;
-                    var allProcesses = Process.GetProcessesByName(processName);
+                // Get ALL processes once and filter in memory (much faster than multiple GetProcessesByName calls)
+                var allProcesses = Process.GetProcesses();
+                
+                try
+                {
+                    // Find our target processes by name
+                    var systemProcesses = allProcesses.Where(p => 
+                    {
+                        try { return p.ProcessName == "NetLock_RMM_User_Process"; }
+                        catch { return false; }
+                    }).ToList();
+                    
+                    var uacProcesses = allProcesses.Where(p => 
+                    {
+                        try { return p.ProcessName == "NetLock_RMM_User_Process_UAC"; }
+                        catch { return false; }
+                    }).ToList();
 
-                    // Prüfe, ob der Prozess bereits in dieser Session läuft
+                    // Check system process
+                    if (!systemProcessRunning)
+                    {
+                        foreach (var process in systemProcesses)
+                        {
+                            try
+                            {
+                                if (!process.HasExited)
+                                {
+                                    systemProcessRunning = true;
+                                    _cachedSystemProcessPid = process.Id;
+                                    
+                                    if (Agent.debug_mode)
+                                        Logging.Debug("Service.CheckUserProcess.Windows", "Found system process", 
+                                            $"PID: {process.Id}");
+                                    break;
+                                }
+                            }
+                            catch { }
+                        }
+
+                        // Start system process if not running
+                        if (!systemProcessRunning)
+                        {
+                            if (Agent.debug_mode)
+                                Logging.Debug("Service.CheckUserProcess.Windows", "Starting system process",
+                                    $"Path: {Application_Paths.netlock_rmm_user_agent_path}");
+
+                            bool success = Windows.Helper.ScreenControl.Win32Interop.CreateInteractiveSystemProcess(
+                                commandLine: Application_Paths.netlock_rmm_user_agent_path,
+                                targetSessionId: 0,
+                                hiddenWindow: false,
+                                out var procInfo
+                            );
+
+                            if (success)
+                            {
+                                _cachedSystemProcessPid = (int)procInfo.dwProcessId;
+                                await Task.Delay(500);
+                            }
+                        }
+                    }
+
+                    // Check user processes for each session
+                    foreach (var sessionId in activeSessions)
+                    {
+                        if (sessionId == 0) continue;
+                        if (!Windows.Helper.ScreenControl.WindowsSession.IsUserLoggedIntoSession(sessionId)) continue;
+                        
+                        // Skip if we already have a cached running process for this session
+                        if (_cachedUserProcessPids.ContainsKey(sessionId)) continue;
+
+                        bool processIsRunning = false;
+                        
+                        foreach (var process in uacProcesses)
+                        {
+                            try
+                            {
+                                if (!process.HasExited)
+                                {
+                                    uint processSessionId = Windows.Helper.ScreenControl.WindowsSession.GetProcessSessionId(process.Id);
+                                    if (processSessionId == sessionId)
+                                    {
+                                        processIsRunning = true;
+                                        _cachedUserProcessPids[sessionId] = process.Id;
+                                        
+                                        if (Agent.debug_mode)
+                                            Logging.Debug("Service.CheckUserProcess.Windows", "Found user process",
+                                                $"PID: {process.Id}, SessionId: {sessionId}");
+                                        break;
+                                    }
+                                }
+                            }
+                            catch { }
+                        }
+
+                        // Start process if not running
+                        if (!processIsRunning)
+                        {
+                            if (Agent.debug_mode)
+                                Logging.Debug("Service.CheckUserProcess.Windows", "Starting user process",
+                                    $"SessionId: {sessionId}, Path: {Application_Paths.netlock_rmm_user_agent_uac_path}");
+
+                            bool success = Windows.Helper.ScreenControl.Win32Interop.CreateProcessInUserSession(
+                                commandLine: Application_Paths.netlock_rmm_user_agent_uac_path,
+                                targetSessionId: (int)sessionId,
+                                hiddenWindow: false,
+                                out var procInfo
+                            );
+
+                            if (success)
+                            {
+                                _cachedUserProcessPids[sessionId] = (int)procInfo.dwProcessId;
+                                await Task.Delay(500);
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    // Dispose all process handles to avoid memory leak
                     foreach (var process in allProcesses)
                     {
-                        if (process != null && !process.HasExited)
-                        {
-                            uint processSessionId = Windows.Helper.ScreenControl.WindowsSession.GetProcessSessionId(process.Id);
-
-                            if (processSessionId == sessionId)
-                            {
-                                processIsRunning = true;
-
-                                if (Agent.debug_mode)
-                                    Logging.Debug("Service.CheckUserProcess",
-                                        "User process is running.",
-                                        $"PID: {process.Id}, SessionId: {sessionId}, ProcessName: {processName}");
-                                break;
-                            }
-                        }
-                    }
-
-                    // Starte Prozess nur wenn er in dieser Session nicht läuft
-                    if (!processIsRunning)
-                    {
-                        if (Agent.debug_mode)
-                            Logging.Debug("Service.CheckUserProcess",
-                                "Starting user process in session",
-                                $"SessionId: {sessionId}, ProcessName: {processName}, Path: {processPath}");
-
-                        // Für angemeldete User: Starte im User-Kontext
-                        bool success = Windows.Helper.ScreenControl.Win32Interop.CreateProcessInUserSession(
-                            commandLine: processPath,
-                            targetSessionId: (int)sessionId,
-                            hiddenWindow: false,
-                            out var procInfo
-                        );
-
-                        if (Agent.debug_mode)
-                            Logging.Debug("Service.CheckUserProcess",
-                                "Process start result",
-                                $"Success: {success}, SessionId: {sessionId}, ProcessName: {processName}");
-
-                        // Warte kurz damit der Prozess Zeit hat zu starten
-                        if (success)
-                            await Task.Delay(500);
-                    }
-
-                    // Prüfe und starte Tray Icon für diese User-Session
-                    bool trayIconRunning = false;
-                    var trayIconProcesses = Process.GetProcessesByName("NetLock_RMM_Tray_Icon");
-
-                    foreach (var process in trayIconProcesses)
-                    {
-                        if (process != null && !process.HasExited)
-                        {
-                            uint traySessionId = Windows.Helper.ScreenControl.WindowsSession.GetProcessSessionId(process.Id);
-
-                            if (traySessionId == sessionId)
-                            {
-                                trayIconRunning = true;
-
-                                if (Agent.debug_mode)
-                                    Logging.Debug("Service.CheckUserProcess",
-                                        "Tray icon is running.",
-                                        $"PID: {process.Id}, SessionId: {sessionId}");
-                                break;
-                            }
-                        }
-                    }
-
-                    if (!trayIconRunning)
-                    {
-                        if (Agent.debug_mode)
-                            Logging.Debug("Service.CheckUserProcess",
-                                "Starting tray icon in session",
-                                $"SessionId: {sessionId}, Path: {Application_Paths.program_files_tray_icon_path}");
-
-                        bool traySuccess = Windows.Helper.ScreenControl.Win32Interop.CreateProcessInUserSession(
-                            commandLine: Application_Paths.program_files_tray_icon_path,
-                            targetSessionId: (int)sessionId,
-                            hiddenWindow: false,
-                            out var trayProcInfo
-                        );
-
-                        if (Agent.debug_mode)
-                            Logging.Debug("Service.CheckUserProcess",
-                                "Tray icon start result",
-                                $"Success: {traySuccess}, SessionId: {sessionId}");
-
-                        if (traySuccess)
-                            await Task.Delay(500);
+                        try { process.Dispose(); } catch { }
                     }
                 }
             }
             catch (Exception ex)
             {
-                Logging.Error("Service.CheckUserProcess", 
+                Logging.Error("Service.CheckUserProcess.Windows", 
                     "Exception while checking or starting user processes.",
                     ex.ToString());
             }
@@ -1426,59 +2083,632 @@ if (Agent.debug_mode)
             }
         }
 
+        /// <summary>
+        /// Linux-specific implementation for user process monitoring.
+        /// Starts user agent processes in logged-in user sessions using loginctl and sudo.
+        /// </summary>
+        private async Task CheckUserProcessStatus_Linux()
+        {
+            // Prevent multiple simultaneous executions
+            if (_isCheckingUserProcesses)
+            {
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.CheckUserProcess.Linux", "Already checking processes, skipping", "");
+                return;
+            }
+
+            _isCheckingUserProcesses = true;
+
+            try
+            {
+                // Get active user sessions
+                var activeSessions = Linux.Helper.LinuxSession.GetActiveSessions();
+
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.CheckUserProcess.Linux", "Found sessions", $"Count: {activeSessions.Count}");
+
+                // Check cached user processes - remove stale entries
+                var usersToCheck = new List<Linux.Helper.LinuxSession.UserSession>();
+                foreach (var session in activeSessions)
+                {
+                    if (session.UserId == 0) continue; // Skip root
+
+                    if (_cachedLinuxUserProcessPids.TryGetValue(session.Username, out int cachedPid))
+                    {
+                        if (!IsCachedProcessRunning(cachedPid))
+                        {
+                            _cachedLinuxUserProcessPids.TryRemove(session.Username, out _);
+                            usersToCheck.Add(session);
+                        }
+                    }
+                    else
+                    {
+                        usersToCheck.Add(session);
+                    }
+                }
+
+                // FAST PATH: If all cached processes are still running, we're done!
+                if (usersToCheck.Count == 0)
+                {
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.CheckUserProcess.Linux", "All cached processes still running", "Fast path");
+                    return;
+                }
+
+                // Check and start processes for users without running agents
+                foreach (var session in usersToCheck)
+                {
+                    Console.WriteLine($"[CheckUserProcess.Linux] Processing user: {session.Username}, SessionType: {session.SessionType}, Display: {session.Display}, WaylandDisplay: {session.WaylandDisplay}");
+                    
+                    // Check if process is already running for this user (no UAC on Linux)
+                    bool processIsRunning = Linux.Helper.LinuxSession.IsProcessRunningForUser("NetLock_RMM_User_Process", session.Username);
+
+                    if (processIsRunning)
+                    {
+                        int pid = Linux.Helper.LinuxSession.FindProcessByNameAndUser("NetLock_RMM_User_Process", session.Username);
+                        if (pid > 0)
+                        {
+                            _cachedLinuxUserProcessPids[session.Username] = pid;
+                            
+                            if (Agent.debug_mode)
+                                Logging.Debug("Service.CheckUserProcess.Linux", "Found existing user process",
+                                    $"User: {session.Username}, PID: {pid}");
+                        }
+                        continue;
+                    }
+
+                    // Start process in user session (no UAC on Linux)
+                    Console.WriteLine($"[CheckUserProcess.Linux] Starting user process for {session.Username}...");
+                    
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.CheckUserProcess.Linux", "Starting user process",
+                            $"User: {session.Username}, UID: {session.UserId}, Path: {Application_Paths.netlock_rmm_user_agent_path}");
+
+                    bool success = Linux.Helper.LinuxSession.CreateProcessInUserSession(
+                        commandPath: Application_Paths.netlock_rmm_user_agent_path,
+                        username: session.Username,
+                        uid: session.UserId,
+                        display: session.Display,
+                        hiddenWindow: false,
+                        out int processId,
+                        sessionType: session.SessionType,
+                        waylandDisplay: session.WaylandDisplay
+                    );
+                    
+                    Console.WriteLine($"[CheckUserProcess.Linux] CreateProcessInUserSession result: success={success}, PID={processId}");
+
+                    if (success && processId > 0)
+                    {
+                        _cachedLinuxUserProcessPids[session.Username] = processId;
+                        
+                        if (Agent.debug_mode)
+                            Logging.Debug("Service.CheckUserProcess.Linux", "Process started successfully",
+                                $"User: {session.Username}, PID: {processId}");
+                        
+                        await Task.Delay(500);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[CheckUserProcess.Linux] Failed to start process for {session.Username}");
+                        if (Agent.debug_mode)
+                            Logging.Debug("Service.CheckUserProcess.Linux", "Failed to start process",
+                                $"User: {session.Username}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logging.Error("Service.CheckUserProcess.Linux",
+                    "Exception while checking or starting user processes.",
+                    ex.ToString());
+            }
+            finally
+            {
+                _isCheckingUserProcesses = false;
+            }
+        }
+
+        /// <summary>
+        /// macOS-specific implementation for user process monitoring.
+        /// Starts user agent processes in logged-in user sessions using launchctl asuser.
+        /// </summary>
+        private async Task CheckUserProcessStatus_MacOS()
+        {
+            // Prevent multiple simultaneous executions
+            if (_isCheckingUserProcesses)
+            {
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.CheckUserProcess.MacOS", "Already checking processes, skipping", "");
+                return;
+            }
+
+            _isCheckingUserProcesses = true;
+
+            try
+            {
+                // Get active user sessions
+                var activeSessions = MacOS.Helper.MacOSSession.GetActiveSessions();
+
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.CheckUserProcess.MacOS", "Found sessions", $"Count: {activeSessions.Count}");
+
+                // Check cached user processes - remove stale entries
+                var usersToCheck = new List<MacOS.Helper.MacOSSession.UserSession>();
+                foreach (var session in activeSessions)
+                {
+                    if (session.UserId == 0) continue; // Skip root
+
+                    if (_cachedMacOSUserProcessPids.TryGetValue(session.Username, out int cachedPid))
+                    {
+                        if (!IsCachedProcessRunning(cachedPid))
+                        {
+                            _cachedMacOSUserProcessPids.TryRemove(session.Username, out _);
+                            usersToCheck.Add(session);
+                        }
+                    }
+                    else
+                    {
+                        usersToCheck.Add(session);
+                    }
+                }
+
+                // FAST PATH: If all cached processes are still running, we're done!
+                if (usersToCheck.Count == 0)
+                {
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.CheckUserProcess.MacOS", "All cached processes still running", "Fast path");
+                    return;
+                }
+
+                // Check and start processes for users without running agents
+                foreach (var session in usersToCheck)
+                {
+                    // Check if process is already running for this user (no UAC on macOS)
+                    bool processIsRunning = MacOS.Helper.MacOSSession.IsProcessRunningForUser("NetLock_RMM_User_Process", session.Username);
+
+                    if (processIsRunning)
+                    {
+                        int pid = MacOS.Helper.MacOSSession.FindProcessByNameAndUser("NetLock_RMM_User_Process", session.Username);
+                        if (pid > 0)
+                        {
+                            _cachedMacOSUserProcessPids[session.Username] = pid;
+                            
+                            if (Agent.debug_mode)
+                                Logging.Debug("Service.CheckUserProcess.MacOS", "Found existing user process",
+                                    $"User: {session.Username}, PID: {pid}");
+                        }
+                        continue;
+                    }
+
+                    // Start process in user session (no UAC on macOS)
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.CheckUserProcess.MacOS", "Starting user process",
+                            $"User: {session.Username}, UID: {session.UserId}, Path: {Application_Paths.netlock_rmm_user_agent_path}");
+
+                    bool success = MacOS.Helper.MacOSSession.CreateProcessInUserSession(
+                        commandPath: Application_Paths.netlock_rmm_user_agent_path,
+                        username: session.Username,
+                        uid: session.UserId,
+                        hiddenWindow: false,
+                        out int processId
+                    );
+
+                    if (success && processId > 0)
+                    {
+                        _cachedMacOSUserProcessPids[session.Username] = processId;
+                        
+                        if (Agent.debug_mode)
+                            Logging.Debug("Service.CheckUserProcess.MacOS", "Process started successfully",
+                                $"User: {session.Username}, PID: {processId}");
+                        
+                        await Task.Delay(500);
+                    }
+                    else
+                    {
+                        if (Agent.debug_mode)
+                            Logging.Debug("Service.CheckUserProcess.MacOS", "Failed to start process",
+                                $"User: {session.Username}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logging.Error("Service.CheckUserProcess.MacOS",
+                    "Exception while checking or starting user processes.",
+                    ex.ToString());
+            }
+            finally
+            {
+                _isCheckingUserProcesses = false;
+            }
+        }
+
+        /// <summary>
+        /// Quickly checks if a cached process is still running by PID.
+        /// This is MUCH faster than Process.GetProcessesByName() because it doesn't enumerate all processes.
+        /// </summary>
+        private bool IsCachedProcessRunning(int pid)
+        {
+            if (pid <= 0) return false;
+            
+            try
+            {
+                var process = Process.GetProcessById(pid);
+                return !process.HasExited;
+            }
+            catch (ArgumentException)
+            {
+                // Process with this PID doesn't exist
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
 
         #endregion
         
         #region Tray Icon Process Monitoring (Windows, Linux & MacOS)
         
+        /// <summary>
+        /// Loads and checks tray icon settings to determine if tray icon should be enabled
+        /// </summary>
+        private bool IsTrayIconEnabled()
+        {
+            try
+            {
+                // Check if config file exists
+                if (!File.Exists(Application_Paths.tray_icon_settings_json_path))
+                {
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.IsTrayIconEnabled", "Tray icon config not found, defaulting to disabled", 
+                            $"Path: {Application_Paths.tray_icon_settings_json_path}");
+                    return false; // Default: disabled if no config exists
+                }
+
+                // Read encrypted config file
+                string encryptedJson = File.ReadAllText(Application_Paths.tray_icon_settings_json_path);
+                
+                if (string.IsNullOrWhiteSpace(encryptedJson))
+                {
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.IsTrayIconEnabled", "Tray icon config is empty, defaulting to disabled", "");
+                    return false;
+                }
+
+                // Decrypt the config
+                string decryptedJson = Global.Encryption.String_Encryption.Decrypt(encryptedJson, Application_Settings.NetLock_Local_Encryption_Key);
+                
+                if (string.IsNullOrWhiteSpace(decryptedJson))
+                {
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.IsTrayIconEnabled", "Failed to decrypt tray icon config, defaulting to disabled", "");
+                    return false;
+                }
+
+                // Parse JSON
+                using var jsonDoc = System.Text.Json.JsonDocument.Parse(decryptedJson);
+                var root = jsonDoc.RootElement;
+                
+                // Check if TrayIcon section exists
+                if (!root.TryGetProperty("TrayIcon", out var trayIconElement))
+                {
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.IsTrayIconEnabled", "TrayIcon section not found in config, defaulting to disabled", "");
+                    return false;
+                }
+                
+                // Check if Enabled property exists in TrayIcon section
+                if (!trayIconElement.TryGetProperty("Enabled", out var enabledElement))
+                {
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.IsTrayIconEnabled", "TrayIcon.Enabled property not found, defaulting to disabled", "");
+                    return false;
+                }
+                
+                // Get enabled status
+                bool enabled = enabledElement.GetBoolean();
+                
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.IsTrayIconEnabled", $"Tray icon enabled status: {enabled}", "");
+                
+                return enabled;
+            }
+            catch (Exception ex)
+            {
+                if (Agent.debug_mode)
+                    Logging.Error("Service.IsTrayIconEnabled", "Error loading tray icon settings, defaulting to disabled", ex.ToString());
+                return false; // Default to disabled on error
+            }
+        }
+        
+        /// <summary>
+        /// Terminates all running tray icon processes
+        /// </summary>
+        private void TerminateTrayIconProcesses()
+        {
+            try
+            {
+                var trayIconProcesses = Process.GetProcessesByName("NetLock_RMM_Tray_Icon");
+                
+                foreach (var process in trayIconProcesses)
+                {
+                    if (process != null && !process.HasExited)
+                    {
+                        try
+                        {
+                            if (Agent.debug_mode)
+                                Logging.Debug("Service.TerminateTrayIconProcesses", 
+                                    "Terminating tray icon process", 
+                                    $"PID: {process.Id}");
+                            
+                            process.Kill();
+                            process.WaitForExit(5000); // Wait max 5 seconds for graceful exit
+                            
+                            if (Agent.debug_mode)
+                                Logging.Debug("Service.TerminateTrayIconProcesses", 
+                                    "Tray icon process terminated", 
+                                    $"PID: {process.Id}");
+                        }
+                        catch (Exception ex)
+                        {
+                            if (Agent.debug_mode)
+                                Logging.Error("Service.TerminateTrayIconProcesses", 
+                                    "Failed to terminate tray icon process", 
+                                    $"PID: {process.Id}, Error: {ex.Message}");
+                        }
+                        finally
+                        {
+                            process.Dispose();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logging.Error("Service.TerminateTrayIconProcesses", 
+                    "Exception while terminating tray icon processes", 
+                    ex.ToString());
+            }
+        }
+        
         private async Task CheckTrayIconProcessStatus()
         {
             try
             {
-                bool processIsRunning = false;
-
-                // Check if the tray icon process is running (same for all platforms)
-                var allProcesses = Process.GetProcessesByName("NetLock_RMM_Tray_Icon");
+                // Check if tray icon should be enabled
+                bool trayIconEnabled = IsTrayIconEnabled();
                 
-                foreach (var process in allProcesses)
+                if (!trayIconEnabled)
                 {
-                    if (process != null && !process.HasExited)
-                    {
-                        processIsRunning = true;
-                        Logging.Debug("Service.CheckTrayIconProcess", "Tray icon process is running.",
-                            $"PID: {process.Id}");
-                        break; // Tray icon process is running, no action needed
-                    }
+                    // Tray icon is disabled - terminate any running instances
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.CheckTrayIconProcess", 
+                            "Tray icon is disabled in config, terminating processes", "");
+                    
+                    TerminateTrayIconProcesses();
+                    return;
                 }
-
-                // Start process if not running (platform-specific)
-                if (!processIsRunning)
+                
+                // Platform-specific implementations
+                if (OperatingSystem.IsWindows())
                 {
-                    if (OperatingSystem.IsWindows())
-                    {
-                        bool success = Windows.Helper.ScreenControl.Win32Interop.CreateInteractiveSystemProcess(
-                            commandLine: Application_Paths.program_files_tray_icon_path,
-                            targetSessionId: 0,
-                            hiddenWindow: false,
-                            out var procInfo
-                        );
-                    }
-                    else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
-                    {
-                        ProcessStartInfo startInfo = new ProcessStartInfo
-                        {
-                            FileName = Application_Paths.program_files_tray_icon_path,
-                            UseShellExecute = false,
-                            CreateNoWindow = true
-                        };
-                        Process.Start(startInfo);
-                    }
+                    await CheckTrayIconProcessStatus_Windows();
+                }
+                else if (OperatingSystem.IsLinux())
+                {
+                    //await CheckTrayIconProcessStatus_Linux();
+                }
+                else if (OperatingSystem.IsMacOS())
+                {
+                    //await CheckTrayIconProcessStatus_MacOS();
                 }
             }
             catch (Exception ex)
             {
                 Logging.Error("Service.CheckTrayIconProcess", "Exception while checking or starting tray icon process.",
                     ex.ToString());
+            }
+        }
+        
+        /// <summary>
+        /// Windows-specific implementation for tray icon process monitoring.
+        /// </summary>
+        private async Task CheckTrayIconProcessStatus_Windows()
+        {
+            // Get all active sessions (including login screen)
+            var activeSessions = Windows.Helper.ScreenControl.WindowsSession.GetActiveSessions();
+
+            if (Agent.debug_mode)
+                Logging.Debug("Service.CheckTrayIconProcess.Windows", "Active sessions found", $"Count: {activeSessions.Count}");
+
+            // Check and start tray icon for each logged in user session
+            foreach (var sessionId in activeSessions)
+            {
+                // Check if a user is logged in
+                bool isUserLoggedIn = Windows.Helper.ScreenControl.WindowsSession.IsUserLoggedIntoSession(sessionId);
+
+                // Only for logged in users (not for login screen/session 0)
+                if (!isUserLoggedIn || sessionId == 0)
+                    continue;
+
+                // Check if tray icon is already running in this session
+                bool trayIconRunning = false;
+                var trayIconProcesses = Process.GetProcessesByName("NetLock_RMM_Tray_Icon");
+
+                foreach (var process in trayIconProcesses)
+                {
+                    if (process != null && !process.HasExited)
+                    {
+                        uint traySessionId = Windows.Helper.ScreenControl.WindowsSession.GetProcessSessionId(process.Id);
+
+                        if (traySessionId == sessionId)
+                        {
+                            trayIconRunning = true;
+
+                            if (Agent.debug_mode)
+                                Logging.Debug("Service.CheckTrayIconProcess.Windows",
+                                    "Tray icon is running.",
+                                    $"PID: {process.Id}, SessionId: {sessionId}");
+                            break;
+                        }
+                    }
+                }
+
+                if (!trayIconRunning)
+                {
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.CheckTrayIconProcess.Windows",
+                            "Starting tray icon in session",
+                            $"SessionId: {sessionId}, Path: {Application_Paths.program_files_tray_icon_path}");
+
+                    bool success = Windows.Helper.ScreenControl.Win32Interop.CreateProcessInUserSession(
+                        commandLine: Application_Paths.program_files_tray_icon_path,
+                        targetSessionId: (int)sessionId,
+                        hiddenWindow: false,
+                        out var trayProcInfo
+                    );
+
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.CheckTrayIconProcess.Windows",
+                            "Tray icon start result",
+                            $"Success: {success}, SessionId: {sessionId}");
+
+                    if (success)
+                        await Task.Delay(500);
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Linux-specific implementation for tray icon process monitoring.
+        /// </summary>
+        private async Task CheckTrayIconProcessStatus_Linux()
+        {
+            Console.WriteLine("[CheckTrayIconProcess.Linux] Starting tray icon check...");
+            
+            // Get active user sessions
+            var activeSessions = Linux.Helper.LinuxSession.GetActiveSessions();
+
+            Console.WriteLine($"[CheckTrayIconProcess.Linux] Found {activeSessions.Count} active sessions");
+            
+            if (Agent.debug_mode)
+                Logging.Debug("Service.CheckTrayIconProcess.Linux", "Found sessions", $"Count: {activeSessions.Count}");
+
+            // Check and start tray icon for each user session
+            foreach (var session in activeSessions)
+            {
+                if (session.UserId == 0) continue; // Skip root
+                
+                Console.WriteLine($"[CheckTrayIconProcess.Linux] Checking session for user: {session.Username}, UID: {session.UserId}");
+
+                // Check if tray icon is already running for this user
+                bool trayIconRunning = Linux.Helper.LinuxSession.IsProcessRunningForUser("NetLock_RMM_Tray_Icon", session.Username);
+                
+                Console.WriteLine($"[CheckTrayIconProcess.Linux] Tray icon running for {session.Username}: {trayIconRunning}");
+
+                if (trayIconRunning)
+                {
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.CheckTrayIconProcess.Linux",
+                            "Tray icon is running.",
+                            $"User: {session.Username}");
+                    continue;
+                }
+
+                // Start tray icon in user session
+                Console.WriteLine($"[CheckTrayIconProcess.Linux] Starting tray icon for user: {session.Username}, SessionType: {session.SessionType}, Path: {Application_Paths.program_files_tray_icon_path}");
+                
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.CheckTrayIconProcess.Linux",
+                        "Starting tray icon in session",
+                        $"User: {session.Username}, Path: {Application_Paths.program_files_tray_icon_path}");
+
+                bool success = Linux.Helper.LinuxSession.CreateProcessInUserSession(
+                    commandPath: Application_Paths.program_files_tray_icon_path,
+                    username: session.Username,
+                    uid: session.UserId,
+                    display: session.Display,
+                    hiddenWindow: false,
+                    out int processId,
+                    sessionType: session.SessionType,
+                    waylandDisplay: session.WaylandDisplay
+                );
+
+                Console.WriteLine($"[CheckTrayIconProcess.Linux] Start result: success={success}, PID={processId}");
+
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.CheckTrayIconProcess.Linux",
+                        "Tray icon start result",
+                        $"Success: {success}, User: {session.Username}, PID: {processId}");
+
+                if (success)
+                    await Task.Delay(500);
+            }
+        }
+        
+        /// <summary>
+        /// macOS-specific implementation for tray icon process monitoring.
+        /// </summary>
+        private async Task CheckTrayIconProcessStatus_MacOS()
+        {
+            Console.WriteLine("[CheckTrayIconProcess.MacOS] Starting tray icon check...");
+            
+            // Get active user sessions
+            var activeSessions = MacOS.Helper.MacOSSession.GetActiveSessions();
+
+            Console.WriteLine($"[CheckTrayIconProcess.MacOS] Found {activeSessions.Count} active sessions");
+            
+            if (Agent.debug_mode)
+                Logging.Debug("Service.CheckTrayIconProcess.MacOS", "Found sessions", $"Count: {activeSessions.Count}");
+
+            // Check and start tray icon for each user session
+            foreach (var session in activeSessions)
+            {
+                if (session.UserId == 0) continue; // Skip root
+                
+                Console.WriteLine($"[CheckTrayIconProcess.MacOS] Checking session for user: {session.Username}, UID: {session.UserId}");
+
+                // Check if tray icon is already running for this user
+                bool trayIconRunning = MacOS.Helper.MacOSSession.IsProcessRunningForUser("NetLock_RMM_Tray_Icon", session.Username);
+                
+                Console.WriteLine($"[CheckTrayIconProcess.MacOS] Tray icon running for {session.Username}: {trayIconRunning}");
+
+                if (trayIconRunning)
+                {
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.CheckTrayIconProcess.MacOS",
+                            "Tray icon is running.",
+                            $"User: {session.Username}");
+                    continue;
+                }
+
+                // Start tray icon in user session
+                Console.WriteLine($"[CheckTrayIconProcess.MacOS] Starting tray icon for user: {session.Username}, Path: {Application_Paths.program_files_tray_icon_path}");
+                
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.CheckTrayIconProcess.MacOS",
+                        "Starting tray icon in session",
+                        $"User: {session.Username}, Path: {Application_Paths.program_files_tray_icon_path}");
+
+                bool success = MacOS.Helper.MacOSSession.CreateProcessInUserSession(
+                    commandPath: Application_Paths.program_files_tray_icon_path,
+                    username: session.Username,
+                    uid: session.UserId,
+                    hiddenWindow: false,
+                    out int processId
+                );
+
+                Console.WriteLine($"[CheckTrayIconProcess.MacOS] Start result: success={success}, PID={processId}");
+
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.CheckTrayIconProcess.MacOS",
+                        "Tray icon start result",
+                        $"Success: {success}, User: {session.Username}, PID: {processId}");
+
+                if (success)
+                    await Task.Delay(500);
             }
         }
         
@@ -1500,8 +2730,8 @@ if (Agent.debug_mode)
         {
             try
             {
-if (Agent.debug_mode)
-    Logging.Debug("Service.Remote_Agent_Local_Server_Start", "Starting server...", "");
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.Remote_Agent_Local_Server_Start", "Starting server...", "");
 
                 _listener = new TcpListener(IPAddress.Parse("127.0.0.1"), Remote_Agent_Local_Port);
                 _listener.Start();
@@ -1521,9 +2751,8 @@ if (Agent.debug_mode)
             }
             catch (Exception ex)
             {
-if (Agent.debug_mode)
-    Logging.Error("Service.Remote_Agent_Local_Server_Start", "Error starting server.", ex.ToString());
-
+                if (Agent.debug_mode)
+                    Logging.Error("Service.Remote_Agent_Local_Server_Start", "Error starting server.", ex.ToString());
             }
         }
 
@@ -1545,10 +2774,10 @@ if (Agent.debug_mode)
                 if (messageParts[0] == "username")
                 {
                     string username = messageParts[1];
-if (Agent.debug_mode)
-    Logging.Debug("Service.Remote_Agent_Local_Server_Handle_Client", "Client connected", username);
-
-
+                    
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.Remote_Agent_Local_Server_Handle_Client", "Client connected", username);
+                    
                     // Add the client to the dictionary
                     _clients[username] = client;
 
@@ -1680,17 +2909,15 @@ if (Agent.debug_mode)
                         {
                             if (Agent.debug_mode)
                             {
-if (Agent.debug_mode)
-    Logging.Remote_Control("HandleClientMessages", "Processing message", "Task triggered");
-
+                                if (Agent.debug_mode)
+                                    Logging.Remote_Control("HandleClientMessages", "Processing message", "Task triggered");
                             }
                             await ProcessMessage(message);
                         }
                         catch (Exception ex)
                         {
-if (Agent.debug_mode)
-    Logging.ErrorLazy("ProcessMessage", "Error invoking client response.", () => ex.ToString());
-
+                            if (Agent.debug_mode)
+                                Logging.ErrorLazy("ProcessMessage", "Error invoking client response.", () => ex.ToString());
                         }
                     }
                 }
@@ -1705,9 +2932,8 @@ if (Agent.debug_mode)
             }
             catch (Exception ex)
             {
-if (Agent.debug_mode)
-    Logging.ErrorLazy("HandleClientMessages", "Error handling messages from client.", () => ex.ToString());
-
+                if (Agent.debug_mode)
+                    Logging.ErrorLazy("HandleClientMessages", "Error handling messages from client.", () => ex.ToString());
             }
             finally
             {
@@ -1717,9 +2943,8 @@ if (Agent.debug_mode)
                 
                 if (Agent.debug_mode)
                 {
-if (Agent.debug_mode)
-    Logging.Debug("HandleClientMessages", "Client disconnected", username);
-
+                    if (Agent.debug_mode)
+                        Logging.Debug("HandleClientMessages", "Client disconnected", username);
                 }
             }
         }
@@ -1738,10 +2963,9 @@ if (Agent.debug_mode)
                 if (messageParts[0] == "screen_capture")
                 {
                     // Respond with device identity
-if (Agent.debug_mode)
-    Logging.Debug("Service.Remote_Agent_Server_ProcessMessage", "Message Received", messageParts[1]);
-
-
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.Remote_Agent_Server_ProcessMessage", "Message Received", messageParts[1]);
+                    
                     try
                     {
                         //await remote_server_client.InvokeAsync("ReceiveClientResponse", messageParts[1], messageParts[2]);
@@ -1794,9 +3018,8 @@ if (Agent.debug_mode)
             }
             catch (Exception ex)
             {
-if (Agent.debug_mode)
-    Logging.Error("Service.Remote_Agent_Server_ProcessMessage", "Error processing message.", ex.ToString());
-
+                if (Agent.debug_mode)
+                    Logging.Error("Service.Remote_Agent_Server_ProcessMessage", "Error processing message.", ex.ToString());
             }
         }
 
@@ -1804,9 +3027,8 @@ if (Agent.debug_mode)
         {
             try
             {
-if (Agent.debug_mode)
-    Logging.Debug("Service.Remote_Agent_Server_SendToClient", "Sending message to client", message);
-
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.Remote_Agent_Server_SendToClient", "Sending message to client", message);
 
                 if (_clients.TryGetValue(username, out TcpClient client) && client.Connected)
                 {
@@ -1816,9 +3038,9 @@ if (Agent.debug_mode)
                     byte[] messageBytes = Encoding.UTF8.GetBytes(messageWithDelimiter);
                     await stream.WriteAsync(messageBytes, 0, messageBytes.Length);
                     await stream.FlushAsync();
-if (Agent.debug_mode)
-    Logging.Debug("Service.Remote_Agent_Server_SendToClient", "Sent message to client", message);
-
+                    
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.Remote_Agent_Server_SendToClient", "Sent message to client", message);
                 }
                 else
                 {
@@ -1842,10 +3064,10 @@ if (Agent.debug_mode)
                 var deviceIdentityElement = jsonDocument.RootElement.GetProperty("device_identity");
 
                 Device_Identity device_identity_object = JsonSerializer.Deserialize<Device_Identity>(deviceIdentityElement.ToString());
-if (Agent.debug_mode)
-    Logging.Debug("device_identity_object", "", device_identity_object.package_guid);
 
-
+                if (Agent.debug_mode)
+                    Logging.Debug("device_identity_object", "", device_identity_object.package_guid);
+                
                 // Create the new full JSON object
                 var fullJson = new
                 {
@@ -1860,9 +3082,9 @@ if (Agent.debug_mode)
                 // Serialize the full JSON back into a string
                 string outputJson =
                     JsonSerializer.Serialize(fullJson, new JsonSerializerOptions { WriteIndented = true });
-if (Agent.debug_mode)
-    Logging.Debug("Remote_Control_Send_Screen", "outputJson", outputJson);
-
+                
+                if (Agent.debug_mode)
+                    Logging.Debug("Remote_Control_Send_Screen", "outputJson", outputJson);
 
                 // Create a HttpClient instance
                 using (var httpClient = new HttpClient())
@@ -1885,9 +3107,9 @@ if (Agent.debug_mode)
                     {
                         // Request was successful, handle the response
                         var result = await response.Content.ReadAsStringAsync();
-if (Agent.debug_mode)
-    Logging.Debug("Remote_Control_Send_Screen", "result", result);
-
+                        
+                        if (Agent.debug_mode)
+                            Logging.Debug("Remote_Control_Send_Screen", "result", result);
                     }
                     else
                     {
@@ -1899,9 +3121,8 @@ if (Agent.debug_mode)
             }
             catch (Exception ex)
             {
-if (Agent.debug_mode)
-    Logging.Error("Remote_Control_Send_Screen", "failed", ex.ToString());
-
+                if (Agent.debug_mode)
+                    Logging.Error("Remote_Control_Send_Screen", "failed", ex.ToString());
             }
         }
 
@@ -1909,7 +3130,7 @@ if (Agent.debug_mode)
         {
             try
             {
-                // ✅ DEBUGGING: Validate JPEG before sending
+                // Validate JPEG before sending
                 bool isValidJpeg = binaryData.Length >= 2 && binaryData[0] == 0xFF && binaryData[1] == 0xD8;
         
                 if (Agent.debug_mode)
@@ -1921,9 +3142,7 @@ if (Agent.debug_mode)
                     string firstBytes = string.Join(" ", binaryData.Take(20).Select(b => $"0x{b:X2}"));
                     
                     if (Agent.debug_mode)
-if (Agent.debug_mode)
-    Logging.Debug("Remote_Control_Send_Screen", "First 20 bytes before sending", firstBytes);
-
+                        Logging.Debug("Remote_Control_Send_Screen", "First 20 bytes before sending", firstBytes);
                 }
         
                 var jsonDocument = JsonDocument.Parse(device_identity_json);
@@ -1943,9 +3162,7 @@ if (Agent.debug_mode)
                     multipartContent.Add(new ByteArrayContent(binaryData), "screenshot", "screenshot.jpg");
         
                     if (Agent.debug_mode)
-if (Agent.debug_mode)
-    Logging.Debug("Remote_Control_Send_Screen", "Sending HTTP POST", $"{binaryData.Length} bytes");
-
+                        Logging.Debug("Remote_Control_Send_Screen", "Sending HTTP POST", $"{binaryData.Length} bytes");
         
                     var response = await httpClient.PostAsync(
                         Global.Configuration.Agent.http_https + remote_server_url_command + "/Agent/Windows/Remote/Command",
@@ -1954,11 +3171,9 @@ if (Agent.debug_mode)
                     if (response.IsSuccessStatusCode)
                     {
                         var result = await response.Content.ReadAsStringAsync();
-    
+                        
                         if (Agent.debug_mode)
-if (Agent.debug_mode)
-    Logging.Debug("Remote_Control_Send_Screen", "Upload successful", result);
-
+                            Logging.Debug("Remote_Control_Send_Screen", "Upload successful", result);
                     }
                     else
                     {
@@ -1969,9 +3184,8 @@ if (Agent.debug_mode)
             }
             catch (Exception ex)
             {
-if (Agent.debug_mode)
-    Logging.Error("Remote_Control_Send_Screen", "Binary upload failed", ex.ToString());
-
+                if (Agent.debug_mode)
+                    Logging.Error("Remote_Control_Send_Screen", "Binary upload failed", ex.ToString());
             }
         }
 
@@ -1979,9 +3193,9 @@ if (Agent.debug_mode)
         {
             _cancellationTokenSourceLocal.Cancel();
             _listener.Stop();
-if (Agent.debug_mode)
-    Logging.Debug("Service.Remote_Agent_Server_Stop", "Server stopped.", "");
-
+            
+            if (Agent.debug_mode)
+                Logging.Debug("Service.Remote_Agent_Server_Stop", "Server stopped.", "");
         }
 
         #endregion
@@ -2020,22 +3234,905 @@ if (Agent.debug_mode)
                 // Read device_identity.json file & decrypt
                 string jsonString = await File.ReadAllTextAsync(Application_Paths.device_identity_json_path);
                 device_identity_json = String_Encryption.Decrypt(jsonString, Application_Settings.NetLock_Local_Encryption_Key);
-if (Agent.debug_mode)
-    Logging.Debug("Service.LoadServerConfig", "Device identity loaded", device_identity_json);
 
-
+                Console.Write("device_identity_json " + device_identity_json);
+                
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.LoadServerConfig", "Device identity loaded", device_identity_json);
+                
                 // Check servers | We do not want to spam the server with requests here.
                 if (authorized && !remote_server_status || !file_server_status)
                     await Global.Initialization.Check_Connection.Check_Servers();
             }
             catch (Exception ex)
             {
-if (Agent.debug_mode)
-    Logging.Error("Service.LoadServerConfig", "Error loading server configuration", ex.ToString());
-
+                if (Agent.debug_mode)
+                    Logging.Error("Service.LoadServerConfig", "Error loading server configuration", ex.ToString());
             }
         }
 
+        #endregion
+        
+        #region Relay Connection Methods
+        
+        /// <summary>
+        /// Connects to relay server and authenticates the device
+        /// </summary>
+        private async Task ConnectToRelayServer(RelayConnectionDetails relayDetails)
+        {
+            TcpClient relayClient = null;
+            TcpClient localClient = null;
+            Stream relayStream = null; // Changed from NetworkStream to Stream to support SslStream
+            NetworkStream localStream = null;
+            
+            string relayServer = string.Empty;
+            int relayPort = 7081; // Default Relay Port
+            
+            var cts = new CancellationTokenSource();
+            _activeRelaySessions.TryAdd(relayDetails.session_id, cts);
+            
+            // E2EE RSA variables
+            System.Security.Cryptography.RSA agentRsa = null;
+            string agentPublicKeyPem = null;
+            System.Security.Cryptography.RSA adminRsa = null; // Admin Public Key (must live for session!)
+            
+            try
+            {
+                Console.WriteLine($"[RELAY] ========== Starting Relay Connection ==========");
+                Console.WriteLine($"[RELAY] Session ID: {relayDetails.session_id}");
+                Console.WriteLine($"[RELAY] Local Port: {relayDetails.local_port}");
+                Console.WriteLine($"[RELAY] Protocol: {relayDetails.protocol}");
+                Console.WriteLine($"[RELAY] Remote Server URL: {remote_server_url_command}");
+                Console.WriteLine($"[RELAY] Relay Server Info: {relayServer}");
+                Console.WriteLine($"[RELAY] Has Server Public Key: {!string.IsNullOrEmpty(relayDetails.public_key)}");
+                Console.WriteLine($"[RELAY] Server Fingerprint: {relayDetails.fingerprint}");
+                
+                // Extract relay server and port
+                var match = Regex.Match(relay_server, @"^(.*):(\d+)$");
+                if (match.Success)
+                {
+                    relayServer = match.Groups[1].Value;
+                    relayPort = int.Parse(match.Groups[2].Value);
+                }
+                else // broken
+                {
+                    Logging.Error("Service.ConnectToRelayServer", "Invalid relay server format", relay_server);
+                    return;
+                }
+
+                Console.WriteLine($"[RELAY] Extracted Server: {relayServer}");
+                Console.WriteLine($"[RELAY] Using Port: {relayPort}");
+                
+                // Server Identity Verification (TOFU - Trust On First Use)
+                if (!string.IsNullOrEmpty(relayDetails.public_key) && !string.IsNullOrEmpty(relayDetails.fingerprint))
+                {
+                    Console.WriteLine($"[RELAY] Verifying server identity...");
+                    Console.WriteLine($"[RELAY] Server Fingerprint: {relayDetails.fingerprint}");
+
+                    // TOFU: Persistent Fingerprint Verification (MITM Protection!)
+                    string serverIdentifier = $"{relayServer}:{relayPort}";
+
+                    if (!Relay.ServerTrustStore.VerifyServerFingerprint(serverIdentifier, relayDetails.public_key, relayDetails.fingerprint))
+                    {
+                        Console.WriteLine($"[RELAY] SECURITY: Server fingerprint verification FAILED!");
+                        Console.WriteLine($"[RELAY] POSSIBLE MITM ATTACK DETECTED!");
+                        Console.WriteLine($"[RELAY] Connection to {serverIdentifier} REJECTED for security reasons.");
+
+                        if (Agent.debug_mode)
+                            Logging.Debug("Service.ConnectToRelayServer", "MITM detected", 
+                                $"Server {serverIdentifier} fingerprint mismatch - connection rejected");
+
+                        throw new SecurityException($"Server fingerprint verification failed for {serverIdentifier}. Possible MITM attack!");
+                    }
+
+                    Console.WriteLine($"[RELAY] Server fingerprint verified (TOFU protection active)");
+                }
+                else
+                {
+                    Console.WriteLine($"[RELAY] No server public key - cannot verify server identity (MITM risk!)");
+                    Logging.Error("Service.ConnectToRelayServer", "No public key", 
+                        "Server did not provide public key for verification");
+                }
+                
+                // Generate or reuse Agent RSA keypair for E2EE with Admin (SESSION-BASED!)
+                if (!_sessionKeypairs.TryGetValue(relayDetails.session_id, out var keypair))
+                {
+                    // First connection for this session - generate new keypair
+                    Console.WriteLine($"[RELAY] Generating Agent RSA-4096 keypair for E2EE (NEW for session)...");
+                    agentRsa = System.Security.Cryptography.RSA.Create(4096);
+                    agentPublicKeyPem = agentRsa.ExportRSAPublicKeyPem();
+
+                    // Store keypair for this session
+                    _sessionKeypairs.TryAdd(relayDetails.session_id, (agentRsa, agentPublicKeyPem));
+
+                    Console.WriteLine($"[RELAY] Agent RSA keypair generated and stored for session");
+                    Console.WriteLine($"[RELAY] Agent Public Key length: {agentPublicKeyPem.Length} chars");
+                    Console.WriteLine($"[RELAY] Agent Public Key (first 100 chars): {agentPublicKeyPem.Substring(0, Math.Min(100, agentPublicKeyPem.Length))}...");
+                }
+                else
+                {
+                    // Reuse stored keypair
+                    agentRsa = keypair.rsa;
+                    agentPublicKeyPem = keypair.publicKeyPem;
+                    Console.WriteLine($"[RELAY] Reusing stored Agent RSA keypair for this session");
+                    Console.WriteLine($"[RELAY] Agent Public Key length: {agentPublicKeyPem.Length} chars");
+                    Console.WriteLine($"[RELAY] Agent Public Key (first 100 chars): {agentPublicKeyPem.Substring(0, Math.Min(100, agentPublicKeyPem.Length))}...");
+                }
+                
+                Console.WriteLine($"[RELAY] Connecting to: {relayServer}:{relayPort}");
+                
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.ConnectToRelayServer", "Connecting to relay server", 
+                        $"server: {relayServer}, session: {relayDetails.session_id}");
+                
+                // TCP Client to relay server
+                Console.WriteLine($"[RELAY] Creating TcpClient...");
+                relayClient = new TcpClient();
+                
+                // TCP optimizations for E2EE + RDP
+                relayClient.NoDelay = true; // Disable Nagle's algorithm for low-latency
+                relayClient.ReceiveBufferSize = 131072; // 128KB
+                relayClient.SendBufferSize = 131072; // 128KB
+                
+                Console.WriteLine($"[RELAY] Attempting TCP connection...");
+                await relayClient.ConnectAsync(relayServer, relayPort);
+                
+                // Enable TCP KeepAlive
+                relayClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+                
+                Console.WriteLine($"[RELAY] TCP Connection established!");
+                
+                // Establish TLS connection if SSL is enabled
+                if (Global.Configuration.Agent.ssl)
+                {
+                    var sslStream = new SslStream(
+                        relayClient.GetStream(),
+                        false,
+                        (sender, certificate, chain, errors) =>
+                        {
+                            // Validate server certificate
+                            if (errors == SslPolicyErrors.None)
+                            {
+                                Console.WriteLine($"[RELAY TLS] Server certificate valid");
+                                return true;
+                            }
+                            
+                            // Do not allow self-signed certificates (common in internal networks)
+                            if (errors.HasFlag(SslPolicyErrors.RemoteCertificateChainErrors))
+                            {
+                                Console.WriteLine($"[RELAY TLS] Certificate chain error - rejecting. Probably self signed.");
+                                return false;
+                            }
+                            
+                            // Check for certificate name mismatch (IP vs hostname)
+                            if (errors == SslPolicyErrors.RemoteCertificateNameMismatch)
+                            {
+                                Console.WriteLine($"[RELAY TLS] Certificate name mismatch (common with IP addresses) - accepting");
+                                return true;
+                            }
+                            
+                            Console.WriteLine($"[RELAY TLS] Certificate validation failed: {errors}");
+                            Logging.Error("Service.ConnectToRelayServer", "TLS certificate validation failed", 
+                                $"Errors: {errors}, Server: {relayServer}");
+                            return false;
+                        },
+                        null
+                    );
+                    
+                    try
+                    {
+                        Console.WriteLine($"[RELAY TLS] Establishing TLS connection...");
+                        await sslStream.AuthenticateAsClientAsync(relayServer, null, System.Security.Authentication.SslProtocols.Tls12 | System.Security.Authentication.SslProtocols.Tls13, true);
+                        
+                        Console.WriteLine($"[RELAY TLS] Connection established!");
+                        Console.WriteLine($"[RELAY TLS] Protocol: {sslStream.SslProtocol}");
+                        Console.WriteLine($"[RELAY TLS] Cipher: {sslStream.CipherAlgorithm} ({sslStream.CipherStrength} bits)");
+                        Console.WriteLine($"[RELAY TLS] Hash: {sslStream.HashAlgorithm} ({sslStream.HashStrength} bits)");
+                        Console.WriteLine($"[RELAY TLS] Key Exchange: {sslStream.KeyExchangeAlgorithm} ({sslStream.KeyExchangeStrength} bits)");
+                        
+                        if (Agent.debug_mode)
+                            Logging.Debug("Service.ConnectToRelayServer", "TLS established", 
+                                $"Protocol: {sslStream.SslProtocol}, Cipher: {sslStream.CipherAlgorithm}");
+                        
+                        relayStream = sslStream;
+                        Console.WriteLine($"[RELAY] Secure stream obtained (TLS)");
+                    }
+                    catch (Exception tlsEx)
+                    {
+                        Console.WriteLine($"[RELAY TLS] Failed to establish TLS: {tlsEx.Message}");
+                        Logging.Error("Service.ConnectToRelayServer", "TLS handshake failed", tlsEx.ToString());
+                        
+                        sslStream?.Dispose();
+                        throw;
+                    }
+                }
+                else
+                {
+                    // Use plain TCP without TLS
+                    relayStream = relayClient.GetStream();
+                    Console.WriteLine($"[RELAY] Using plain TCP connection (SSL disabled)");
+                    
+                    if (Agent.debug_mode)
+                        Logging.Debug("Service.ConnectToRelayServer", "Connected to relay server without TLS", 
+                            $"session: {relayDetails.session_id}");
+                }
+                
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.ConnectToRelayServer", "Connected to relay server", 
+                        $"session: {relayDetails.session_id}, SSL: {Global.Configuration.Agent.ssl}");
+                
+                // Parse json: {"device_identity": {...}}
+                Console.WriteLine($"[RELAY] Parsing device identity JSON...");
+                Console.WriteLine($"[RELAY] Device Identity JSON length: {device_identity_json?.Length ?? 0} bytes");
+                
+                var jsonDocument = JsonDocument.Parse(device_identity_json);
+                var deviceIdentityElement = jsonDocument.RootElement.GetProperty("device_identity");
+                var deviceIdentity = JsonSerializer.Deserialize<Device_Identity>(deviceIdentityElement.ToString());
+                
+                Console.WriteLine($"[RELAY] Device identity parsed successfully");
+                Console.WriteLine($"[RELAY] Access Key: {deviceIdentity.access_key}");
+                Console.WriteLine($"[RELAY] Device Name: {deviceIdentity.device_name}");
+                Console.WriteLine($"[RELAY] HWID: {deviceIdentity.hwid}");
+                
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.ConnectToRelayServer", "Device identity parsed", 
+                        $"access_key: {deviceIdentity.access_key}, hwid: {deviceIdentity.hwid}");
+                
+                Console.WriteLine($"[RELAY] Preparing authentication data...");
+                
+                // Build auth data with agent public key for E2EE key exchange
+                object authData;
+                
+                if (!string.IsNullOrEmpty(agentPublicKeyPem))
+                {
+                    Console.WriteLine($"[RELAY] Including Agent Public Key for E2EE");
+                    authData = new
+                    {
+                        session_id = relayDetails.session_id,
+                        device_identity = new
+                        {
+                            device_name = deviceIdentity.device_name,
+                            access_key = deviceIdentity.access_key,
+                            hwid = deviceIdentity.hwid,
+                            tenant_guid = deviceIdentity.tenant_guid,
+                            location_guid = deviceIdentity.location_guid,
+                            platform = deviceIdentity.platform,
+                            agent_version = deviceIdentity.agent_version,
+                            package_guid = deviceIdentity.package_guid,
+                            ip_address_internal = deviceIdentity.ip_address_internal,
+                            operating_system = deviceIdentity.operating_system,
+                            domain = deviceIdentity.domain,
+                            antivirus_solution = deviceIdentity.antivirus_solution,
+                            firewall_status = deviceIdentity.firewall_status,
+                            architecture = deviceIdentity.architecture,
+                            last_boot = deviceIdentity.last_boot,
+                            timezone = deviceIdentity.timezone,
+                            cpu = deviceIdentity.cpu,
+                            cpu_usage = deviceIdentity.cpu_usage,
+                            mainboard = deviceIdentity.mainboard,
+                            gpu = deviceIdentity.gpu,
+                            ram = deviceIdentity.ram,
+                            ram_usage = deviceIdentity.ram_usage,
+                            tpm = deviceIdentity.tpm,
+                            environment_variables = deviceIdentity.environment_variables,
+                            last_active_user = deviceIdentity.last_active_user
+                        },
+                        agent_public_key = agentPublicKeyPem
+                    };
+                }
+                else
+                {
+                    Console.WriteLine($"[RELAY] Auth without E2EE (no agent keypair)");
+                    authData = new
+                    {
+                        session_id = relayDetails.session_id,
+                        device_identity = new
+                        {
+                            device_name = deviceIdentity.device_name,
+                            access_key = deviceIdentity.access_key,
+                            hwid = deviceIdentity.hwid,
+                            tenant_guid = deviceIdentity.tenant_guid,
+                            location_guid = deviceIdentity.location_guid,
+                            platform = deviceIdentity.platform,
+                            agent_version = deviceIdentity.agent_version,
+                            package_guid = deviceIdentity.package_guid,
+                            ip_address_internal = deviceIdentity.ip_address_internal,
+                            operating_system = deviceIdentity.operating_system,
+                            domain = deviceIdentity.domain,
+                            antivirus_solution = deviceIdentity.antivirus_solution,
+                            firewall_status = deviceIdentity.firewall_status,
+                            architecture = deviceIdentity.architecture,
+                            last_boot = deviceIdentity.last_boot,
+                            timezone = deviceIdentity.timezone,
+                            cpu = deviceIdentity.cpu,
+                            cpu_usage = deviceIdentity.cpu_usage,
+                            mainboard = deviceIdentity.mainboard,
+                            gpu = deviceIdentity.gpu,
+                            ram = deviceIdentity.ram,
+                            ram_usage = deviceIdentity.ram_usage,
+                            tpm = deviceIdentity.tpm,
+                            environment_variables = deviceIdentity.environment_variables,
+                            last_active_user = deviceIdentity.last_active_user
+                        }
+                    };
+                }
+                
+                string authJson = JsonSerializer.Serialize(authData);
+                Console.WriteLine($"[RELAY] Auth JSON size: {authJson.Length} bytes");
+
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.ConnectToRelayServer", "Auth JSON prepared with agent public key", 
+                        $"json_size: {authJson.Length}, has_agent_pubkey: {!string.IsNullOrEmpty(agentPublicKeyPem)}");
+                
+                Console.WriteLine($"[RELAY] Sending authentication to server...");
+                byte[] authBytes = Encoding.UTF8.GetBytes(authJson);
+                await relayStream.WriteAsync(authBytes, 0, authBytes.Length, cts.Token);
+                await relayStream.FlushAsync(cts.Token);
+                
+                Console.WriteLine($"[RELAY] Authentication sent ({authBytes.Length} bytes)");
+                
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.ConnectToRelayServer", "Authentication sent", $"session: {relayDetails.session_id}");
+                
+                // Wait for auth response
+                Console.WriteLine($"[RELAY] Waiting for authentication response...");
+                byte[] responseBuffer = new byte[8192]; // Larger for public key
+                int bytesRead = await relayStream.ReadAsync(responseBuffer, 0, responseBuffer.Length, cts.Token);
+                string response = Encoding.UTF8.GetString(responseBuffer, 0, bytesRead);
+                
+                Console.WriteLine($"[RELAY] Received response ({bytesRead} bytes)");
+                Console.WriteLine($"[RELAY] Response content: {response}");
+                
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.ConnectToRelayServer", "Auth response received", 
+                        $"bytes: {bytesRead}, content: {response}");
+                
+                RelayAuthResponse authResponse = null;
+                try
+                {
+                    authResponse = JsonSerializer.Deserialize<RelayAuthResponse>(response);
+                }
+                catch (JsonException ex)
+                {
+                    Console.WriteLine($"[RELAY] ERROR - Failed to parse auth response as JSON: {ex.Message}");
+                    Console.WriteLine($"[RELAY] Raw response: {response}");
+                    Logging.Error("Service.ConnectToRelayServer", "Invalid JSON in auth response", 
+                        $"session: {relayDetails.session_id}, response: {response}, error: {ex.Message}");
+                    return;
+                }
+                
+                if (authResponse == null)
+                {
+                    Console.WriteLine($"[RELAY] ERROR - Auth response deserialized to null");
+                    Logging.Error("Service.ConnectToRelayServer", "Auth response is null", 
+                        $"session: {relayDetails.session_id}");
+                    return;
+                }
+                
+                if (!authResponse.success)
+                {
+                    Console.WriteLine($"[RELAY] Authentication failed: {authResponse.message}");
+                    Console.WriteLine($"[RELAY] This indicates the Relay Server rejected our authentication");
+                    Console.WriteLine($"[RELAY] Possible causes:");
+                    Console.WriteLine($"[RELAY]   1. Invalid Access Key or HWID");
+                    Console.WriteLine($"[RELAY]   2. Device not found in database");
+                    Console.WriteLine($"[RELAY]   3. Session ID mismatch");
+                    Console.WriteLine($"[RELAY]   4. Invalid JSON format in auth request");
+                    Console.WriteLine($"[RELAY]   5. Server-side authentication error");
+                    
+                    Logging.Error("Service.ConnectToRelayServer", "Authentication failed", 
+                        $"session: {relayDetails.session_id}, message: {authResponse.message}");
+                    return;
+                }
+                
+                Console.WriteLine($"[RELAY] Authentication successful!");
+                
+                // E2EE initialization with admin public key from SignalR command
+                RelayEncryption relayEncryption = null;
+
+                Console.WriteLine($"[RELAY E2EE] === ADMIN KEY SOURCE CHECK ===");
+                Console.WriteLine($"[RELAY E2EE] Admin Public Key in SignalR Command: {!string.IsNullOrEmpty(relayDetails.admin_public_key)}");
+                
+                if (!string.IsNullOrEmpty(relayDetails.admin_public_key) && agentRsa != null)
+                {
+                    Console.WriteLine($"[RELAY] Admin Public Key received from SignalR Command");
+                    Console.WriteLine($"[RELAY] Admin Public Key length: {relayDetails.admin_public_key.Length} chars");
+                    Console.WriteLine($"[RELAY E2EE] Admin Public Key (first 100 chars):");
+                    Console.WriteLine($"[RELAY E2EE]   {relayDetails.admin_public_key.Substring(0, Math.Min(100, relayDetails.admin_public_key.Length))}");
+                    Console.WriteLine($"[RELAY E2EE] === END KEY DEBUG ===");
+                    
+                    try
+                    {
+                        // Import admin public key from SignalR command
+                        adminRsa = System.Security.Cryptography.RSA.Create();
+                        adminRsa.ImportFromPem(relayDetails.admin_public_key);
+                        Console.WriteLine($"[RELAY] Admin Public Key imported ({adminRsa.KeySize} bits)");
+                        
+                        // Initialize E2EE
+                        relayEncryption = new RelayEncryption(agentRsa, adminRsa);
+                        Console.WriteLine($"[RELAY] E2EE initialized (Agent <-> Admin)");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[RELAY] Failed to initialize E2EE: {ex.Message}");
+                        Logging.Error("Service.ConnectToRelayServer", "E2EE initialization failed", ex.ToString());
+                        
+                        // Cleanup on error
+                        adminRsa?.Dispose();
+                        adminRsa = null;
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"[RELAY] No Admin Public Key in SignalR Command - E2EE not available");
+                    Console.WriteLine($"[RELAY] Reason: No admin_public_key in SignalR Command");
+                    if (agentRsa == null)
+                        Console.WriteLine($"[RELAY] ERROR: No agent RSA keypair available!");
+                }
+                
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.ConnectToRelayServer", "Authentication successful", $"session: {relayDetails.session_id}");
+                
+                // Connect to local service with timeout
+                Console.WriteLine($"[RELAY] Connecting to local service 127.0.0.1:{relayDetails.local_port}...");
+                localClient = new TcpClient();
+                
+                // TCP optimizations for RDP
+                localClient.NoDelay = true; // Disable Nagle's algorithm
+                localClient.ReceiveBufferSize = 131072; // 128KB
+                localClient.SendBufferSize = 131072; // 128KB
+                
+                // Set timeout for connection (10 seconds)
+                var connectTask = localClient.ConnectAsync("127.0.0.1", relayDetails.local_port);
+                var timeoutTask = Task.Delay(10000, cts.Token);
+                var completedTask = await Task.WhenAny(connectTask, timeoutTask);
+                
+                if (completedTask == timeoutTask)
+                {
+                    Console.WriteLine($"[RELAY] Connection to local service timed out after 10 seconds");
+                    Logging.Error("Service.ConnectToRelayServer", "Connection to local service timed out", 
+                        $"session: {relayDetails.session_id}, local_port: {relayDetails.local_port}");
+                    throw new TimeoutException($"Connection to local service on port {relayDetails.local_port} timed out after 10 seconds");
+                }
+                
+                // Wait for connect task to get exceptions
+                await connectTask;
+                
+                // Enable TCP KeepAlive
+                localClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+                
+                Console.WriteLine($"[RELAY] Connected to local service!");
+                
+                localStream = localClient.GetStream();
+                Console.WriteLine($"[RELAY] Local NetworkStream obtained");
+                
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.ConnectToRelayServer", "Connected to local service", 
+                        $"session: {relayDetails.session_id}, local_port: {relayDetails.local_port}");
+                
+                // Start bidirectional relay with E2EE (if relayEncryption was initialized)
+                Console.WriteLine($"[RELAY] Starting bidirectional relay...");
+                Console.WriteLine($"[RELAY] E2EE Status: {(relayEncryption != null ? "Enabled" : "Disabled")}");
+                
+                if (relayEncryption != null)
+                {
+                    Console.WriteLine($"[RELAY] E2EE enabled (Agent <-> Admin)");
+                    Console.WriteLine($"[RELAY] Data flow will be:");
+                    Console.WriteLine($"[RELAY]   - Relay -> Local: Receive encrypted, decrypt, forward plaintext");
+                    Console.WriteLine($"[RELAY]   - Local -> Relay: Receive plaintext, encrypt, forward encrypted");
+                    Console.WriteLine($"[RELAY] ");
+                    Console.WriteLine($"[RELAY] IMPORTANT: The Admin MUST send the encrypted Session-Key as the first packet!");
+                    Console.WriteLine($"[RELAY]            Without it, the Agent cannot encrypt outgoing data.");
+                }
+                else
+                {
+                    Console.WriteLine($"[RELAY] No E2EE - relay will run in plaintext mode");
+                }
+                
+                Console.WriteLine($"[RELAY] Starting data relay for {relayDetails.session_id}-relay-to-local (encryption: {relayEncryption != null}, encrypt: False)");
+                Console.WriteLine($"[RELAY] Starting data relay for {relayDetails.session_id}-local-to-relay (encryption: {relayEncryption != null}, encrypt: True)");
+                
+                var relayToLocal = RelayDataAsync(relayStream, localStream, $"{relayDetails.session_id}-relay-to-local", cts.Token, relayEncryption, false);
+                var localToRelay = RelayDataAsync(localStream, relayStream, $"{relayDetails.session_id}-local-to-relay", cts.Token, relayEncryption, true);
+                
+                Console.WriteLine($"[RELAY] Bidirectional relay started!");
+                
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.ConnectToRelayServer", "Bidirectional relay started", $"session: {relayDetails.session_id}");
+                
+                // Wait until one of the two tasks ends, then cancel the other
+                await Task.WhenAny(relayToLocal, localToRelay);
+                
+                Console.WriteLine($"[RELAY] Relay connection ended, cancelling...");
+                
+                // Cancel the cancellation token to stop both relay tasks
+                cts.Cancel();
+                
+                // Wait for both tasks to ensure they are finished
+                try
+                {
+                    await Task.WhenAll(relayToLocal, localToRelay);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected when one of the tasks was cancelled
+                    Console.WriteLine($"[RELAY] Tasks cancelled (expected)");
+                }
+                
+                Console.WriteLine($"[RELAY] Relay ended gracefully");
+                
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.ConnectToRelayServer", "Relay ended", $"session: {relayDetails.session_id}");
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine($"[RELAY] Session cancelled: {relayDetails.session_id}");
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.ConnectToRelayServer", "Relay session cancelled", $"session: {relayDetails.session_id}");
+            }
+            catch (TimeoutException ex)
+            {
+                Console.WriteLine($"[RELAY] Timeout error: {ex.Message}");
+                Logging.Error("Service.ConnectToRelayServer", "Local service connection timeout", 
+                    $"session: {relayDetails.session_id}, error: {ex.Message}");
+            }
+            catch (SocketException ex)
+            {
+                Console.WriteLine($"[RELAY] Socket error: {ex.SocketErrorCode} - {ex.Message}");
+                Logging.Error("Service.ConnectToRelayServer", "Network connection error", 
+                    $"session: {relayDetails.session_id}, SocketErrorCode: {ex.SocketErrorCode}, error: {ex.Message}");
+            }
+            catch (IOException ex)
+            {
+                Console.WriteLine($"[RELAY] IO error: {ex.Message}");
+                Logging.Error("Service.ConnectToRelayServer", "Stream I/O error", 
+                    $"session: {relayDetails.session_id}, error: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[RELAY] Unexpected error: {ex.GetType().Name} - {ex.Message}");
+                Console.WriteLine($"[RELAY] Stack trace: {ex.StackTrace}");
+                Logging.Error("Service.ConnectToRelayServer", "Relay connection error", 
+                    $"session: {relayDetails.session_id}, error: {ex.Message}");
+            }
+            finally
+            {
+                Console.WriteLine($"[RELAY] Cleaning up resources for session {relayDetails.session_id}...");
+                
+                // E2EE Cleanup: Dispose RSA keys (do NOT delete from dictionary - session is still running!)
+                try
+                {
+                    adminRsa?.Dispose();
+                    Console.WriteLine($"[RELAY] Admin RSA key disposed");
+                }
+                catch { }
+                
+                // IMPORTANT: do NOT dispose agentRsa - it lives in the _sessionKeypairs dictionary!
+
+                // Cleanup - Dispose instead of Close for better resource cleanup
+                try
+                {
+                    localStream?.Dispose();
+                    Console.WriteLine($"[RELAY] Local stream disposed");
+                }
+                catch { }
+                
+                try
+                {
+                    localClient?.Dispose();
+                    Console.WriteLine($"[RELAY] Local client disposed");
+                }
+                catch { }
+                
+                try
+                {
+                    relayStream?.Dispose();
+                    Console.WriteLine($"[RELAY] Relay stream disposed");
+                }
+                catch { }
+                
+                try
+                {
+                    relayClient?.Dispose();
+                    Console.WriteLine($"[RELAY] Relay client disposed");
+                }
+                catch { }
+                
+                _activeRelaySessions.TryRemove(relayDetails.session_id, out _);
+                Console.WriteLine($"[RELAY] Session removed from active sessions");
+                
+                try
+                {
+                    cts?.Dispose();
+                    Console.WriteLine($"[RELAY] CancellationTokenSource disposed");
+                }
+                catch { }
+                
+                Console.WriteLine($"[RELAY] ========== Cleanup Complete ==========");
+                Console.WriteLine($"[RELAY] Note: Agent RSA keypair kept in memory for potential reconnection");
+                
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.ConnectToRelayServer", "Relay session cleaned up", $"session: {relayDetails.session_id}");
+            }
+        }
+        
+        /// <summary>
+        /// Relays data bidirectionally between two streams with length-prefix protocol for E2EE
+        /// </summary>
+        private async Task RelayDataAsync(Stream source, Stream destination, string direction, 
+            CancellationToken cancellationToken, RelayEncryption encryption = null, bool encrypt = false)
+        {
+            long totalBytes = 0;
+            
+            // Logging already done before this method is called
+            
+            try
+            {
+                if (encryption != null)
+                {
+                    // E2EE Mode: Use length-prefix protocol
+                    totalBytes = await RelayDataWithLengthPrefixAsync(source, destination, direction, cancellationToken, encryption, encrypt);
+                }
+                else
+                {
+                    // Plaintext Mode: Direct relay
+                    totalBytes = await RelayDataPlaintextAsync(source, destination, direction, cancellationToken);
+                }
+                
+                //Console.WriteLine($"[RELAY] {direction}: {totalBytes / 1024} KB transferred");
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine($"[RELAY] {direction}: Cancelled (total: {totalBytes / 1024} KB)");
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.RelayDataAsync", "Relay cancelled", direction);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[RELAY] {direction}: Stream error - {ex.GetType().Name}: {ex.Message}");
+                if (Agent.debug_mode)
+                    Logging.Debug("Service.RelayDataAsync", "Relay stream ended", $"{direction}: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Relay with length-prefix protocol for E2EE (Format: [Length:4][EncryptedData])
+        /// </summary>
+        private async Task<long> RelayDataWithLengthPrefixAsync(Stream source, Stream destination, string direction,
+            CancellationToken cancellationToken, RelayEncryption encryption, bool encrypt)
+        {
+            byte[] buffer = new byte[65536];
+            byte[] lengthPrefix = new byte[4];
+            long totalBytes = 0;
+            bool sessionKeyReceived = false;
+            
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                if (encrypt)
+                {
+                    // IMPORTANT: Wait until session key is established (received from decrypt stream)
+                    if (!encryption.IsSessionKeyEstablished())
+                    {
+                        // Wait max 30 seconds for session key (increased from 10s for slow networks)
+                        Console.WriteLine($"[RELAY E2EE] {direction}: Waiting for Session-Key to be established...");
+                        Console.WriteLine($"[RELAY E2EE] {direction}: This key must be sent by the Admin/Backend first");
+                        
+                        for (int i = 0; i < 300; i++) // 300 * 100ms = 30 seconds
+                        {
+                            if (cancellationToken.IsCancellationRequested)
+                            {
+                                Console.WriteLine($"[RELAY E2EE] {direction}: Cancelled while waiting for Session-Key");
+                                return totalBytes;
+                            }
+                            
+                            await Task.Delay(100, cancellationToken);
+                            
+                            if (encryption.IsSessionKeyEstablished())
+                            {
+                                Console.WriteLine($"[RELAY E2EE] {direction}: Session-Key established after {i * 100}ms");
+                                break;
+                            }
+                            
+                            // Log every 5 seconds
+                            if (i > 0 && i % 50 == 0)
+                            {
+                                Console.WriteLine($"[RELAY E2EE] {direction}: Still waiting... ({i * 100}ms elapsed)");
+                            }
+                        }
+                        
+                        if (!encryption.IsSessionKeyEstablished())
+                        {
+                            Console.WriteLine($"[RELAY E2EE] {direction}: Session-Key not established after 30 seconds - aborting");
+                            Console.WriteLine($"[RELAY E2EE] {direction}: This indicates the Admin/Backend is not sending the Session-Key");
+                            Console.WriteLine($"[RELAY E2EE] {direction}: Possible causes:");
+                            Console.WriteLine($"[RELAY E2EE] {direction}:   1. Admin disconnected before sending Session-Key");
+                            Console.WriteLine($"[RELAY E2EE] {direction}:   2. Backend/Relay not forwarding Session-Key to Agent");
+                            Console.WriteLine($"[RELAY E2EE] {direction}:   3. Network connectivity issues");
+                            throw new TimeoutException("Session-Key not established after 30 seconds");
+                        }
+                    }
+                    
+                    // Local -> Relay: Read plaintext, encrypt, send with length-prefix
+                    int bytesRead = await source.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                    if (bytesRead == 0) break;
+                    
+                    byte[] plaintext = new byte[bytesRead];
+                    Buffer.BlockCopy(buffer, 0, plaintext, 0, bytesRead);
+                    
+                    // Encrypt
+                    byte[] ciphertext = encryption.Encrypt(plaintext);
+                    
+                    // Send length-prefix + ciphertext
+                    byte[] lengthBytes = BitConverter.GetBytes(ciphertext.Length);
+                    await destination.WriteAsync(lengthBytes, 0, 4, cancellationToken);
+                    await destination.WriteAsync(ciphertext, 0, ciphertext.Length, cancellationToken);
+                    await destination.FlushAsync(cancellationToken);
+                    
+                    totalBytes += bytesRead;
+                    
+                    //if (totalBytes % 102400 < 65536)
+                      //  Console.WriteLine($"[RELAY] {direction}: {totalBytes / 1024} KB transferred");
+                }
+                else
+                {
+                    // FIRST packet is encrypted session key from admin!
+                    if (!sessionKeyReceived)
+                    {
+                        Console.WriteLine($"[RELAY E2EE] {direction}: Waiting for first packet (encrypted Session-Key from Admin)...");
+                        
+                        // Read length-prefix
+                        int keyRead = await ReadExactAsync(source, lengthPrefix, 0, 4, cancellationToken);
+                        if (keyRead == 0)
+                        {
+                            Console.WriteLine($"[RELAY E2EE] {direction}: Connection closed before receiving Session-Key");
+                            break;
+                        }
+                        
+                        int encryptedKeyLength = BitConverter.ToInt32(lengthPrefix, 0);
+                        Console.WriteLine($"[RELAY E2EE] {direction}: Received Session-Key length prefix: {encryptedKeyLength} bytes");
+                        
+                        if (encryptedKeyLength != 512) // RSA-4096 = 512 bytes
+                        {
+                            Console.WriteLine($"[RELAY E2EE] {direction}: WARNING - Unexpected Session-Key length: {encryptedKeyLength} (expected 512 for RSA-4096)");
+                            Console.WriteLine($"[RELAY E2EE] {direction}: This might indicate a protocol mismatch or wrong RSA key size");
+                        }
+                        
+                        // Read encrypted session key
+                        byte[] encryptedSessionKey = new byte[encryptedKeyLength];
+                        Console.WriteLine($"[RELAY E2EE] {direction}: Reading {encryptedKeyLength} bytes of encrypted Session-Key...");
+                        await ReadExactAsync(source, encryptedSessionKey, 0, encryptedKeyLength, cancellationToken);
+                        
+                        Console.WriteLine($"[RELAY E2EE] {direction}: Encrypted Session-Key received, importing...");
+                        
+                        // Import session key
+                        try
+                        {
+                            encryption.ImportEncryptedSessionKey(encryptedSessionKey);
+                            sessionKeyReceived = true;
+                            
+                            Console.WriteLine($"[RELAY E2EE] {direction}: Session-Key successfully imported! ({encryptedKeyLength} bytes)");
+                            Console.WriteLine($"[RELAY E2EE] {direction}: E2EE encryption is now active for this relay session");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[RELAY E2EE] {direction}: ERROR - Failed to import Session-Key: {ex.Message}");
+                            Console.WriteLine($"[RELAY E2EE] {direction}: This indicates the Admin used wrong public key or encryption failed");
+                            throw;
+                        }
+                        
+                        continue; // Next packet is then data
+                    }
+                    
+                    // Relay -> Local: Read length-prefix, read complete encrypted packet, decrypt
+                    int read = await ReadExactAsync(source, lengthPrefix, 0, 4, cancellationToken);
+                    if (read == 0) break;
+                    
+                    int encryptedLength = BitConverter.ToInt32(lengthPrefix, 0);
+                    
+                    // Validation
+                    if (encryptedLength <= 0 || encryptedLength > 1048576) // Max 1MB
+                    {
+                        Console.WriteLine($"[RELAY E2EE] Invalid encrypted length: {encryptedLength}");
+                        throw new InvalidDataException($"Invalid encrypted packet length: {encryptedLength}");
+                    }
+                    
+                    // Read complete encrypted packet
+                    byte[] ciphertext = new byte[encryptedLength];
+                    await ReadExactAsync(source, ciphertext, 0, encryptedLength, cancellationToken);
+                    
+                    // Decrypt
+                    byte[] plaintext = encryption.Decrypt(ciphertext);
+                    
+                    // Send plaintext
+                    await destination.WriteAsync(plaintext, 0, plaintext.Length, cancellationToken);
+                    await destination.FlushAsync(cancellationToken);
+                    
+                    totalBytes += plaintext.Length;
+                    
+                    //if (totalBytes % 102400 < 65536)
+                      //  Console.WriteLine($"[RELAY] {direction}: {totalBytes / 1024} KB transferred");
+                }
+            }
+            
+            return totalBytes;
+        }
+        
+        /// <summary>
+        /// Plaintext relay without encryption
+        /// </summary>
+        private async Task<long> RelayDataPlaintextAsync(Stream source, Stream destination, string direction,
+            CancellationToken cancellationToken)
+        {
+            byte[] buffer = new byte[65536];
+            long totalBytes = 0;
+            
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                int bytesRead = await source.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                if (bytesRead == 0) break;
+                
+                await destination.WriteAsync(buffer, 0, bytesRead, cancellationToken);
+                await destination.FlushAsync(cancellationToken);
+                
+                totalBytes += bytesRead;
+                
+                //if (totalBytes % 102400 < 65536)
+                  //  Console.WriteLine($"[RELAY] {direction}: {totalBytes / 1024} KB transferred");
+            }
+            
+            return totalBytes;
+        }
+        
+        /// <summary>
+        /// Reads exactly the specified number of bytes from a stream
+        /// </summary>
+        private async Task<int> ReadExactAsync(Stream stream, byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        {
+            int totalRead = 0;
+            while (totalRead < count)
+            {
+                int read = await stream.ReadAsync(buffer, offset + totalRead, count - totalRead, cancellationToken);
+                if (read == 0) return totalRead; // Stream ended
+                totalRead += read;
+            }
+            return totalRead;
+        }
+        
+        /// <summary>
+        /// Details for Relay Connection Request (from command field)
+        /// </summary>
+        private class RelayConnectionDetails
+        {
+            public string session_id { get; set; }
+            public int local_port { get; set; }
+            public string protocol { get; set; }
+            public string public_key { get; set; }
+            public string fingerprint { get; set; }
+            public string admin_public_key { get; set; } // For admin change detection
+        }
+        
+        /// <summary>
+        /// Details for Relay Close Connection (from command field)
+        /// </summary>
+        private class RelayCloseDetails
+        {
+            public string session_id { get; set; }
+        }
+        
+        /// <summary>
+        /// Response class for relay authentication
+        /// </summary>
+        private class RelayAuthResponse
+        {
+            public bool success { get; set; }
+            public string message { get; set; }
+            // Admin Public Key comes ONLY via SignalR (Type 14 Command), NOT via Auth-Response!
+        }
+        
+        /// <summary>
+        /// Encryption handler for relay connections (RSA E2EE between Agent and Admin)
+        /// </summary>
+        
         #endregion
         
     } 

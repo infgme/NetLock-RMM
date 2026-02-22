@@ -111,7 +111,7 @@ namespace NetLock_RMM_Web_Console.Classes.Authentication
         
         /// <summary>
         /// Checks if a user is authorized for SSO login.
-        /// Returns true only if the user exists in the database and has role "SSO".
+        /// Returns true only if the user exists in the database and has auth_mode set to 'SSO' or 'Password & SSO'.
         /// Does NOT create new users automatically.
         /// </summary>
         /// <param name="email">User email from SSO provider</param>
@@ -124,15 +124,16 @@ namespace NetLock_RMM_Web_Console.Classes.Authentication
                 
                 await conn.OpenAsync();
 
-                // Check if user exists AND has SSO role
-                var checkCommand = new MySqlConnector.MySqlCommand("SELECT COUNT(*) FROM accounts WHERE username = @email AND role = 'SSO';", conn);
+                // Check if user exists AND has SSO enabled in auth_mode
+                var checkCommand = new MySqlConnector.MySqlCommand(
+                    "SELECT COUNT(*) FROM accounts WHERE username = @email AND (auth_mode = 'SSO' OR auth_mode = 'Password & SSO');", conn);
                 checkCommand.Parameters.AddWithValue("@email", email);
                 
                 var count = Convert.ToInt32(await checkCommand.ExecuteScalarAsync());
                 
                 if (count > 0)
                 {
-                    // User exists with SSO role, update last login
+                    // User exists with SSO enabled, update last login
                     var updateCommand = new MySqlConnector.MySqlCommand(
                         "UPDATE accounts SET last_login = @now, ip_address = 'SSO' WHERE username = @email", conn);
                     updateCommand.Parameters.AddWithValue("@email", email);
@@ -140,13 +141,13 @@ namespace NetLock_RMM_Web_Console.Classes.Authentication
                     await updateCommand.ExecuteNonQueryAsync();
                     
                     Console.WriteLine($"SSO: User authorized and login updated: {email}");
-                    Logging.Handler.Debug("SSO", "User Authorized", $"User {email} has SSO role and is authorized");
+                    Logging.Handler.Debug("SSO", "User Authorized", $"User {email} has SSO enabled and is authorized");
                     return true;
                 }
                 else
                 {
-                    Console.WriteLine($"SSO: User not authorized or does not have SSO role: {email}");
-                    Logging.Handler.Debug("SSO", "User Not Authorized", $"User {email} not found or does not have SSO role");
+                    Console.WriteLine($"SSO: User not authorized or does not have SSO enabled: {email}");
+                    Logging.Handler.Debug("SSO", "User Not Authorized", $"User {email} not found or does not have SSO enabled in auth_mode");
                     return false;
                 }
             }

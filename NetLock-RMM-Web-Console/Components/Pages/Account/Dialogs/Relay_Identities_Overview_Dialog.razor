@@ -1,0 +1,552 @@
+@using MySqlConnector
+@using System.Data.Common
+@using System.Security.Claims
+
+@inject NavigationManager NavigationManager
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<style>
+    .obfuscated-text {
+        filter: blur(5px);
+        user-select: none;
+        cursor: not-allowed;
+    }
+    
+    .api-key-cell {
+        font-family: monospace;
+        font-size: 0.875rem;
+    }
+    
+    .hwid-cell {
+        font-family: monospace;
+        font-size: 0.75rem;
+        color: #666;
+    }
+    
+    .mud-theme-dark .hwid-cell {
+        color: #aaa;
+    }
+</style>
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h5">
+            <MudIcon Icon="@Icons.Material.Filled.Key" Class="mr-2" />
+            Relay API Keys Overview
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        
+        @if (!string.IsNullOrEmpty(error_message))
+        {
+            <MudAlert Class="mb-3" Severity="Severity.Error" Icon="@Icons.Material.Filled.Error">@error_message</MudAlert>
+        }
+        
+        <MudPaper Class="pa-3" Elevation="3">
+            <div class="d-flex justify-space-between align-center mb-3">
+                <MudText Typo="Typo.h6">
+                    <MudIcon Icon="@Icons.Material.Filled.ListAlt" Class="mr-2" Size="Size.Small" />
+                    All Relay Identities
+                </MudText>
+                <MudChip T="string" Size="Size.Small" Color="Color.Info">@relay_identities.Count Identity(ies)</MudChip>
+            </div>
+            
+            @if (loading_identities)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2" />
+            }
+            
+            @if (relay_identities.Count == 0 && !loading_identities)
+            {
+                <MudAlert Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
+                    No relay identities found.
+                </MudAlert>
+            }
+            else
+            {
+                <MudTable Items="@relay_identities" Hover="true" Dense="true" Striped="true">
+                    <HeaderContent>
+                        <MudTh>Admin</MudTh>
+                        <MudTh>Name</MudTh>
+                        <MudTh>API Key</MudTh>
+                        <MudTh>Hardware ID</MudTh>
+                        <MudTh>Created</MudTh>
+                        <MudTh>Last Used</MudTh>
+                        <MudTh>Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Admin">
+                            <div class="d-flex align-center">
+                                <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" Class="mr-2" />
+                                <div>
+                                    <MudText Typo="Typo.body2" Style="font-weight: 600;">@context.admin_name</MudText>
+                                    <MudText Typo="Typo.caption" Style="color: gray;">@context.admin_email</MudText>
+                                </div>
+                            </div>
+                        </MudTd>
+                        <MudTd DataLabel="Name">
+                            <span>@context.name</span>
+                        </MudTd>
+                        <MudTd DataLabel="API Key">
+                            <div class="api-key-cell @(context.is_own ? "" : "obfuscated-text")">
+                                <span>@context.api_key</span>
+                            </div>
+                        </MudTd>
+                        <MudTd DataLabel="Hardware ID">
+                            <div class="hwid-cell">
+                                @if (string.IsNullOrEmpty(context.hardware_id))
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Filled.Warning">Not registered</MudChip>
+                                }
+                                else
+                                {
+                                    <span>@context.hardware_id</span>
+                                }
+                            </div>
+                        </MudTd>
+                        <MudTd DataLabel="Created">
+                            <MudText Typo="Typo.caption">@context.created_at?.ToString("yyyy-MM-dd HH:mm")</MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Last Used">
+                            <MudText Typo="Typo.caption">@(context.last_used?.ToString("yyyy-MM-dd HH:mm") ?? "Never")</MudText>
+                        </MudTd>
+                        <MudTd DataLabel="Actions">
+                            @if (context.is_own)
+                            {
+                                <MudTooltip Text="Copy API Key">
+                                    <MudIconButton 
+                                        Icon="@Icons.Material.Filled.ContentCopy" 
+                                        Size="Size.Small" 
+                                        Color="Color.Info"
+                                        OnClick="@(() => CopyToClipboard(context.api_key, "API Key"))" />
+                                </MudTooltip>
+                                <MudTooltip Text="Reset Hardware ID">
+                                    <MudIconButton 
+                                        Icon="@Icons.Material.Filled.Refresh" 
+                                        Size="Size.Small" 
+                                        Color="Color.Warning"
+                                        OnClick="@(() => ResetHardwareId(context.id))"
+                                        Disabled="@(string.IsNullOrEmpty(context.hardware_id))" />
+                                </MudTooltip>
+                                <MudTooltip Text="Delete Identity">
+                                    <MudIconButton 
+                                        Icon="@Icons.Material.Filled.Delete" 
+                                        Size="Size.Small" 
+                                        Color="Color.Error"
+                                        OnClick="@(() => DeleteRelayIdentity(context.id))" />
+                                </MudTooltip>
+                            }
+                            else if (can_manage_all_identities)
+                            {
+                                <MudTooltip Text="Delete Identity (Admin)">
+                                    <MudIconButton 
+                                        Icon="@Icons.Material.Filled.Delete" 
+                                        Size="Size.Small" 
+                                        Color="Color.Error"
+                                        OnClick="@(() => DeleteRelayIdentityAsAdmin(context.id, context.admin_name))" />
+                                </MudTooltip>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.caption" Style="color: gray;">No actions</MudText>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudPaper>
+
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@Refresh" Variant="Variant.Text" Color="Color.Default" StartIcon="@Icons.Material.Filled.Refresh" Size="Size.Small">Refresh</MudButton>
+        <MudButton OnClick="@OpenCreateDialog" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Size="Size.Small">Create New</MudButton>
+        <MudButton OnClick="@Close" Variant="Variant.Filled" Color="Color.Default" Size="Size.Small">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; }
+
+    private string error_message = String.Empty;
+    private bool loading_identities = true;
+    private int current_admin_id = 0;
+    private bool can_manage_all_identities = false;
+    private List<RelayIdentityInfo> relay_identities = new List<RelayIdentityInfo>();
+
+    public class RelayIdentityInfo
+    {
+        public int id { get; set; }
+        public int admin_id { get; set; }
+        public string admin_name { get; set; } = String.Empty;
+        public string name { get; set; } = String.Empty;
+        public string admin_email { get; set; } = String.Empty;
+        public string api_key { get; set; } = String.Empty;
+        public string hardware_id { get; set; } = String.Empty;
+        public DateTime? created_at { get; set; }
+        public DateTime? last_used { get; set; }
+        public bool is_own { get; set; } = false;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+
+        if (user?.Identity is not { IsAuthenticated: true })
+        {
+            NavigationManager.NavigateTo("/login", true);
+            return;
+        }
+
+        // Get current admin ID
+        await Load_Current_Admin_Id();
+        
+        // Check permissions
+        await Load_Permissions();
+        
+        // Load all relay identities
+        await Load_Relay_Identities();
+    }
+
+    private async Task Load_Permissions()
+    {
+        try
+        {
+            var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+            string username = user.FindFirst(ClaimTypes.Email)?.Value ?? String.Empty;
+            
+            can_manage_all_identities = await Classes.Authentication.Permissions.Verify_Permission(username, "relay_server_manage");
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("Relay_Identities_Overview_Dialog -> Load_Permissions", "Error", ex.ToString());
+        }
+    }
+
+    private async Task Load_Current_Admin_Id()
+    {
+        try
+        {
+            var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+            string username = user.FindFirst(ClaimTypes.Email)?.Value;
+
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            await conn.OpenAsync();
+
+            string query = "SELECT id FROM accounts WHERE username = @username;";
+            MySqlCommand cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@username", username);
+
+            using (DbDataReader reader = await cmd.ExecuteReaderAsync())
+            {
+                if (reader.HasRows && await reader.ReadAsync())
+                {
+                    current_admin_id = Convert.ToInt32(reader["id"]);
+                }
+            }
+
+            await conn.CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("Relay_Identities_Overview_Dialog -> Load_Current_Admin_Id", "Error", ex.ToString());
+        }
+    }
+
+    private async Task Load_Relay_Identities()
+    {
+        loading_identities = true;
+        relay_identities.Clear();
+        error_message = String.Empty;
+        StateHasChanged();
+
+        try
+        {
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            await conn.OpenAsync();
+
+            string query = @"
+                SELECT 
+                    ra.id,
+                    ra.admin_id,
+                    ra.name,
+                    ra.api_key,
+                    ra.hardware_id,
+                    ra.created_at,
+                    ra.last_used,
+                    a.username,
+                    CONCAT(a.first_name, ' ', a.last_name) as full_name
+                FROM relay_admins ra
+                LEFT JOIN accounts a ON ra.admin_id = a.id
+                ORDER BY ra.created_at DESC;";
+
+            MySqlCommand cmd = new MySqlCommand(query, conn);
+
+            using (DbDataReader reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                {
+                    int adminId = Convert.ToInt32(reader["admin_id"]);
+                    bool isOwn = adminId == current_admin_id;
+                    
+                    string fullApiKey = reader["api_key"]?.ToString() ?? String.Empty;
+                    string fullHardwareId = reader["hardware_id"]?.ToString() ?? String.Empty;
+                    
+                    // Wenn nicht eigene Identity, schneide sensible Daten ab
+                    string apiKeyToSend = fullApiKey;
+                    string hardwareIdToSend = fullHardwareId;
+                    
+                    if (!isOwn)
+                    {
+                        // API Key: Nur erste 4 und letzte 4 Zeichen senden
+                        if (!string.IsNullOrEmpty(fullApiKey) && fullApiKey.Length > 8)
+                        {
+                            apiKeyToSend = fullApiKey.Substring(0, 4) + "REDACTED" + fullApiKey.Substring(fullApiKey.Length - 4);
+                        }
+                        else if (!string.IsNullOrEmpty(fullApiKey))
+                        {
+                            apiKeyToSend = "REDACTED";
+                        }
+                        
+                        // Hardware ID: Nur erste 8 Zeichen senden, Rest abschneiden
+                        if (!string.IsNullOrEmpty(fullHardwareId) && fullHardwareId.Length > 8)
+                        {
+                            hardwareIdToSend = fullHardwareId.Substring(0, 8) + "████";
+                        }
+                        else if (!string.IsNullOrEmpty(fullHardwareId))
+                        {
+                            hardwareIdToSend = fullHardwareId;
+                        }
+                    }
+                    
+                    relay_identities.Add(new RelayIdentityInfo
+                    {
+                        id = Convert.ToInt32(reader["id"]),
+                        admin_id = adminId,
+                        admin_name = reader["full_name"]?.ToString() ?? "Unknown",
+                        admin_email = reader["username"]?.ToString() ?? "N/A",
+                        name = reader["name"]?.ToString() ?? String.Empty,
+                        api_key = apiKeyToSend,
+                        hardware_id = hardwareIdToSend,
+                        created_at = reader["created_at"] as DateTime?,
+                        last_used = reader["last_used"] as DateTime?,
+                        is_own = isOwn
+                    });
+                }
+            }
+
+            await conn.CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            error_message = $"Failed to load relay identities: {ex.Message}";
+            Logging.Handler.Error("Relay_Identities_Overview_Dialog -> Load_Relay_Identities", "Error", ex.ToString());
+        }
+        finally
+        {
+            loading_identities = false;
+            StateHasChanged();
+        }
+    }
+
+
+    private async Task CopyToClipboard(string text, string label)
+    {
+        await JSRuntime.InvokeVoidAsync("copyToClipboard", text);
+        
+        Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+        Snackbar.Add($"{label} copied to clipboard!", Severity.Info);
+    }
+
+    private async Task ResetHardwareId(int identityId)
+    {
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            FullWidth = true,
+            MaxWidth = MaxWidth.Medium,
+            BackgroundClass = "dialog-blurring",
+        };
+
+        bool? dialog_result = await DialogService.ShowMessageBox(
+            "Warning", 
+            "Are you sure you want to reset the hardware ID? The device will need to register again.", 
+            yesText: "Confirm", 
+            cancelText: "Cancel", 
+            options: options);
+
+        bool state = Convert.ToBoolean(dialog_result == null ? "false" : "true");
+
+        if (!state)
+            return;
+
+        try
+        {
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            await conn.OpenAsync();
+
+            string query = "UPDATE relay_admins SET hardware_id = '' WHERE id = @id AND admin_id = @admin_id;";
+
+            MySqlCommand cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@id", identityId);
+            cmd.Parameters.AddWithValue("@admin_id", current_admin_id);
+
+            int rowsAffected = await cmd.ExecuteNonQueryAsync();
+            await conn.CloseAsync();
+
+            if (rowsAffected > 0)
+            {
+                Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+                Snackbar.Add("Hardware ID reset successfully.", Severity.Success);
+                await Load_Relay_Identities();
+            }
+            else
+            {
+                Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+                Snackbar.Add("Failed to reset hardware ID.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("Relay_Identities_Overview_Dialog -> ResetHardwareId", "Error", ex.ToString());
+            Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+            Snackbar.Add("An error occurred.", Severity.Error);
+        }
+    }
+
+    private async Task DeleteRelayIdentity(int identityId)
+    {
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            FullWidth = true,
+            MaxWidth = MaxWidth.Medium,
+            BackgroundClass = "dialog-blurring",
+        };
+
+        bool? dialog_result = await DialogService.ShowMessageBox(
+            "Warning", 
+            "Are you sure you want to delete this relay identity? This action cannot be undone.", 
+            yesText: "Confirm", 
+            cancelText: "Cancel", 
+            options: options);
+
+        bool state = Convert.ToBoolean(dialog_result == null ? "false" : "true");
+
+        if (!state)
+            return;
+
+        try
+        {
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            await conn.OpenAsync();
+
+            string query = "DELETE FROM relay_admins WHERE id = @id AND admin_id = @admin_id;";
+
+            MySqlCommand cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@id", identityId);
+            cmd.Parameters.AddWithValue("@admin_id", current_admin_id);
+
+            int rowsAffected = await cmd.ExecuteNonQueryAsync();
+            await conn.CloseAsync();
+
+            if (rowsAffected > 0)
+            {
+                Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+                Snackbar.Add("Relay identity deleted successfully.", Severity.Success);
+                await Load_Relay_Identities();
+            }
+            else
+            {
+                Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+                Snackbar.Add("Failed to delete relay identity.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("Relay_Identities_Overview_Dialog -> DeleteRelayIdentity", "Error", ex.ToString());
+            Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+            Snackbar.Add("An error occurred.", Severity.Error);
+        }
+    }
+
+    private async Task DeleteRelayIdentityAsAdmin(int identityId, string adminName)
+    {
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            FullWidth = true,
+            MaxWidth = MaxWidth.Medium,
+            BackgroundClass = "dialog-blurring",
+        };
+
+        bool? dialog_result = await DialogService.ShowMessageBox(
+            "Warning", 
+            $"Are you sure you want to delete the relay identity from {adminName}? This action cannot be undone and requires admin privileges.", 
+            yesText: "Confirm", 
+            cancelText: "Cancel", 
+            options: options);
+
+        bool state = Convert.ToBoolean(dialog_result == null ? "false" : "true");
+
+        if (!state)
+            return;
+
+        try
+        {
+            MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            await conn.OpenAsync();
+
+            // Als Admin kann man ohne admin_id Check löschen
+            string query = "DELETE FROM relay_admins WHERE id = @id;";
+
+            MySqlCommand cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@id", identityId);
+
+            int rowsAffected = await cmd.ExecuteNonQueryAsync();
+            await conn.CloseAsync();
+
+            if (rowsAffected > 0)
+            {
+                Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+                Snackbar.Add($"Relay identity from {adminName} deleted successfully.", Severity.Success);
+                await Load_Relay_Identities();
+            }
+            else
+            {
+                Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+                Snackbar.Add("Failed to delete relay identity.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("Relay_Identities_Overview_Dialog -> DeleteRelayIdentityAsAdmin", "Error", ex.ToString());
+            Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+            Snackbar.Add("An error occurred.", Severity.Error);
+        }
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var dialog = await DialogService.ShowAsync<Relay_Account_Dialog>("Create Relay Identity");
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await Load_Relay_Identities();
+        }
+    }
+
+    private async Task Refresh()
+    {
+        await Load_Relay_Identities();
+    }
+
+    private void Close()
+    {
+        MudDialog.Close();
+    }
+}
+

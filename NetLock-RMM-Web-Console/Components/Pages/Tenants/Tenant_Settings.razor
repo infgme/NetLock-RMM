@@ -15,6 +15,7 @@
 @inject IJSRuntime JSRuntime
 @inject IStringLocalizer<Pages.Tenants.Tenant_Settings> Localizer
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NetLock_RMM_Web_Console.Classes.Helper.TenantUpdateService TenantUpdateService
 
 <style>
     .selected-row-light {
@@ -356,7 +357,7 @@
 
         add_location_dialog_open = true;
 
-        var result = await this.DialogService.Show<Pages.Tenants.Dialogs.Location_Management.Add_Location_Dialog>(string.Empty, parameters, options).Result;
+        var result = await (await DialogService.ShowAsync<Pages.Tenants.Dialogs.Location_Management.Add_Location_Dialog>(string.Empty, parameters, options)).Result;
 
         add_location_dialog_open = false;
 
@@ -518,11 +519,11 @@
         {
             await localStorage.SetItemAsync("tenant_name", name);
             
-            Snackbar.Add(Localizer["saved"], Severity.Success);
+            Snackbar.Add("Saved.", Severity.Success);
             input_disabled = true;
 
-            Thread.Sleep(1000);
-            NavigationManager.Refresh();
+            // Notify NavMenu to reload tenant data
+            TenantUpdateService.NotifyTenantUpdated();
         }
         else
             Snackbar.Add(Localizer["error_occurred"], Severity.Error);

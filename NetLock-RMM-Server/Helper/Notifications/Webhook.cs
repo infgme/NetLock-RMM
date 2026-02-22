@@ -12,6 +12,8 @@ namespace Helper.Notifications
     {
         public static async Task<bool> Send_Message(string id, string netlock_tenant_name, string netlock_location_name, string netlock_device_name, string netlock_date, string netlock_reported_by, string netlock_event, string netlock_description)
         {
+            Console.WriteLine("Webhook Notification Triggered for ID: " + id );
+            
             string url = string.Empty;
             string method = "POST";
             string? requestBody = null;
@@ -50,6 +52,7 @@ namespace Helper.Notifications
                                 catch (JsonException ex)
                                 {
                                     Logging.Handler.Error("Helper.Notifications.Webhook", "Send_Message.Parse_JSON", ex.ToString());
+                                    Console.WriteLine(ex.ToString());
                                 }
                             }
                         }
@@ -59,6 +62,7 @@ namespace Helper.Notifications
             catch (Exception ex)
             {
                 Logging.Handler.Error("Helper.Notifications.Webhook", "Send_Message.Query_Webhook_Info", ex.ToString());
+                Console.WriteLine(ex.ToString());
                 return false;
             }
             finally

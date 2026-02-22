@@ -179,32 +179,6 @@ namespace NetLock_RMM_Server.Agent.Windows
             }
         }
 
-        // Get role_remote from appsettings.json file
-        public static async Task<bool> Get_Role_Status(string role)
-        {
-            try
-            {
-                Logging.Handler.Debug("NetLock_RMM_Server.Modules.Helper.Get_Role_Status", "role", role);
-                
-                string json = File.ReadAllText("appsettings.json");
-                Logging.Handler.Debug("NetLock_RMM_Server.Modules.Helper.Get_Role_Status", "appsettings.json", json);
-
-                using (JsonDocument document = JsonDocument.Parse(json))
-                {
-                    JsonElement kestrelElement = document.RootElement.GetProperty("Kestrel");
-                    JsonElement rolesElement = kestrelElement.GetProperty("Roles");
-                    bool role_status = rolesElement.GetProperty(role).GetBoolean();
-                    Logging.Handler.Debug("NetLock_RMM_Server.Modules.Helper.Get_Role_Status", "role_status", role_status.ToString());
-                    return role_status;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logging.Handler.Error("NetLock_RMM_Server.Modules.Helper.Get_Role_Status", "General error", ex.ToString());
-                return false;
-            }
-        }
-
         // Get uptime_monitoring_enabled from database
         public static async Task<bool> Get_Uptime_Monitoring_Status(int device_id)
         {

@@ -81,55 +81,6 @@ namespace NetLock_RMM_Server.Agent.Windows
                         return "identical"; // Suppress updates if the package does not exist
                     }
 
-                    // Check if the platforms have auto updates enabled
-                    if (device_identity.platform == "Windows")
-                    {
-                        bool autoUpdateEnabled = await MySQL.Handler.Quick_Reader("SELECT * FROM settings;", "agent_updates_windows_enabled") == "1";
-                        Logging.Handler.Debug("Agent.Windows.Version_Handler.Check_Version", "agent_updates_windows_enabled", autoUpdateEnabled.ToString());
-
-                        if (!autoUpdateEnabled)
-                        {
-                            Logging.Handler.Debug("Agent.Windows.Version_Handler.Check_Version", "Auto updates are disabled for Windows", "Returning identical to suppress updates.");
-                            return "identical"; // Suppress updates if auto updates are disabled
-                        }
-                    }
-                    else if (device_identity.platform == "Linux")
-                    {
-                        // Check if the agent version supports auto updates
-                        if (noAutoUpdateVersions.Contains(device_identity.agent_version))
-                        {
-                            Logging.Handler.Debug("Agent.Windows.Version_Handler.Check_Version", "Auto updates are not supported for Linux version", device_identity.agent_version);
-                            return "identical"; // Suppress updates for Linux version
-                        }
-
-                        bool autoUpdateEnabled = await MySQL.Handler.Quick_Reader("SELECT * FROM settings;", "agent_updates_linux_enabled") == "1";
-                        Logging.Handler.Debug("Agent.Windows.Version_Handler.Check_Version", "agent_updates_linux_enabled", autoUpdateEnabled.ToString());
-                        
-                        if (!autoUpdateEnabled)
-                        {
-                            Logging.Handler.Debug("Agent.Windows.Version_Handler.Check_Version", "Auto updates are disabled for Linux", "Returning identical to suppress updates.");
-                            return "identical"; // Suppress updates if auto updates are disabled
-                        }
-                    }
-                    else if (device_identity.platform == "macOS")
-                    {
-                        // Check if the agent version supports auto updates
-                        if (noAutoUpdateVersions.Contains(device_identity.agent_version))
-                        {
-                            Logging.Handler.Debug("Agent.Windows.Version_Handler.Check_Version", "Auto updates are not supported for Linux version", device_identity.agent_version);
-                            return "identical"; // Suppress updates for Linux version
-                        }
-
-                        bool autoUpdateEnabled = await MySQL.Handler.Quick_Reader("SELECT * FROM settings;", "agent_updates_macos_enabled") == "1";
-                        Logging.Handler.Debug("Agent.Windows.Version_Handler.Check_Version", "agent_updates_macos_enabled", autoUpdateEnabled.ToString());
-                        
-                        if (!autoUpdateEnabled)
-                        {
-                            Logging.Handler.Debug("Agent.Windows.Version_Handler.Check_Version", "Auto updates are disabled for macOS", "Returning identical to suppress updates.");
-                            return "identical"; // Suppress updates if auto updates are disabled
-                        }
-                    }
-
                     // Check if currently more than X devices are waiting for an update
                     int maxPendingUpdates = Convert.ToInt32(await MySQL.Handler.Quick_Reader("SELECT * FROM settings;", "agent_updates_max_concurrent_updates"));
                     Logging.Handler.Debug("Agent.Windows.Version_Handler.Check_Version", "agent_updates_max_concurrent_updates", maxPendingUpdates.ToString());

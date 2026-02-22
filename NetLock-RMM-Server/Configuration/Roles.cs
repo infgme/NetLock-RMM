@@ -9,5 +9,6 @@
         public static bool Notification = false;
         public static bool File = false;
         public static bool LLM = false;
+        public static bool Relay = false;
     }
 }

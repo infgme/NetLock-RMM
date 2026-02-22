@@ -1,14 +1,23 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Linq;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using NetLock_RMM_User_Process.Helper.Keyboard;
+using NetLock_RMM_User_Process.Windows.Keyboard;
 using NetLock_RMM_User_Process.Windows.Helper;
 using NetLock_RMM_User_Process.Windows.Mouse;
 using NetLock_RMM_User_Process.Windows.ScreenControl;
+using NetLock_RMM_User_Process.Linux.Keyboard;
+using NetLock_RMM_User_Process.Linux.Mouse;
+using NetLock_RMM_User_Process.Linux.ScreenControl;
+using NetLock_RMM_User_Process.MacOS.Keyboard;
+using NetLock_RMM_User_Process.MacOS.Mouse;
+using NetLock_RMM_User_Process.MacOS.ScreenControl;
 using WindowsInput;
 using static System.Net.Mime.MediaTypeNames;
 
@@ -19,6 +28,16 @@ class UserClient
     private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
     private Task _messageHandlerTask;
     private bool _isConnecting = false;
+    
+    // Remote session state tracking
+    private bool _remoteSessionActive = false;
+    private DateTime _lastScreenCaptureTime = DateTime.MinValue;
+    private readonly TimeSpan _sessionIdleTimeout = TimeSpan.FromSeconds(5); // Consider session ended after 5s of no screen captures
+    private Timer _sessionIdleTimer;
+    
+    // Double-click detection
+    private DateTime _lastLeftClickTime = DateTime.MinValue;
+    private const int DOUBLE_CLICK_DETECTION_MS = 500; // Detection window for double-clicks
 
     public class Command
     {
@@ -42,6 +61,86 @@ class UserClient
 
 
     private ConcurrentQueue<Command> _commandQueue = new ConcurrentQueue<Command>();
+
+    /// <summary>
+    /// Called whenever remote session activity is detected (e.g., screen capture request).
+    /// Manages animation state and session idle timeout.
+    /// </summary>
+    private void OnRemoteSessionActivity()
+    {
+        _lastScreenCaptureTime = DateTime.Now;
+        
+        // Start remote session if not already active
+        if (!_remoteSessionActive)
+        {
+            _remoteSessionActive = true;
+            
+            if (OperatingSystem.IsWindows())
+            {
+                Console.WriteLine("Remote session started - disabling Windows animations for better performance.");
+
+                AnimationManager.DisableAnimations();
+            }
+        }
+        
+        // Reset or start the idle timer
+        _sessionIdleTimer?.Dispose();
+        _sessionIdleTimer = new Timer(OnSessionIdleTimeout, null, _sessionIdleTimeout, Timeout.InfiniteTimeSpan);
+    }
+    
+    /// <summary>
+    /// Called when the session has been idle for too long (no screen captures).
+    /// Restores animations and marks session as ended.
+    /// </summary>
+    private void OnSessionIdleTimeout(object state)
+    {
+        if (_remoteSessionActive)
+        {
+            _remoteSessionActive = false;
+            
+            if (OperatingSystem.IsWindows())
+            {
+                Console.WriteLine("Remote session ended (idle timeout) - restoring Windows animations.");
+
+                AnimationManager.RestoreAnimations();
+            }
+            
+            // Linux: Stop PipeWire screen capture to release the screen share
+            if (OperatingSystem.IsLinux() && _linuxCaptureInstance != null)
+            {
+                Console.WriteLine("Remote session ended (idle timeout) - stopping Linux screen capture.");
+                
+                try
+                {
+                    _linuxCaptureInstance.Dispose();
+                    _linuxCaptureInstance = null;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error stopping Linux screen capture: {ex.Message}");
+                }
+            }
+            
+            // macOS: Stop screen capture
+            if (OperatingSystem.IsMacOS() && _macOSCaptureInstance != null)
+            {
+                Console.WriteLine("Remote session ended (idle timeout) - stopping macOS screen capture.");
+                
+                try
+                {
+                    _macOSCaptureInstance.Dispose();
+                    _macOSCaptureInstance = null;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error stopping macOS screen capture: {ex.Message}");
+                }
+            }
+        }
+        
+        _sessionIdleTimer?.Dispose();
+        _sessionIdleTimer = null;
+    }
 
     private async Task Local_Server_Handle_Server_Messages(CancellationToken cancellationToken)
     {
@@ -205,150 +304,458 @@ class UserClient
             {
                     // Ersetze den Fall "0" in ProcessCommand wie folgt:
                     case "0": // Screen Capture
-                        _ = Task.Run(() => CaptureAndSendScreenshot(command));
+                        // Track remote session activity and manage animations
+                        OnRemoteSessionActivity();
+                        // Sequential processing per screen to prevent out-of-order frame delivery
+                        _ = Task.Run(() => CaptureAndSendScreenshotSequential(command));
                     break;
 
                 case "1": // Move Mouse / Clicks
-                    string[] mouseCoordinates = command.remote_control_mouse_xyz.Split(',');
-                    int x = Convert.ToInt32(mouseCoordinates[0]);
-                    int y = Convert.ToInt32(mouseCoordinates[1]);
-                    int screenIndex = Convert.ToInt32(command.remote_control_screen_index);
-
-                    await MouseControl.MoveMouse(x, y, screenIndex);
-
-                    switch (command.remote_control_mouse_action)
+                    _ = Task.Run(async () =>
                     {
-                        case "0": // Left Click
-                            await MouseControl.LeftClickMouse();
-                            break;
-
-                        case "1": // Right Click
-                            await MouseControl.RightClickMouse();
-                            break;
-
-                        case "2": // Mouse Down
-                            await MouseControl.LeftMouseDown();
-                            break;
-
-                        case "3": // Mouse Up
-                            await MouseControl.LeftMouseUp();
-                            break;
-
-                        case "4": // Move only (already done above)
-                                  // Nothing more to do here
-                            break;
-
-                        default:
-                            // Optional: Log unknown action
-                            break;
-                    }
-                    break;
-                case "2": // Keyboard Input
-                {
-                    var input = command.remote_control_keyboard_input?.Trim();
-
-                    if (string.IsNullOrEmpty(input))
-                        break;
-
-                    var inputLower = input.ToLowerInvariant();
-
-                        // If shift is in the first part of the input, we assume it's a modifier key
-                        bool shift = inputLower.StartsWith("shift+");
-
-                        Console.WriteLine($"Processing keyboard input: {inputLower}, Shift: {shift}");
-
-                        if (inputLower == "ctrl+keya")
-                            KeyboardControl.SendCtrlA();
-                        else if (inputLower == "ctrl+keyc")
-                            KeyboardControl.SendCtrlC();
-                        else if (inputLower == "ctrl+keyv")
-                            KeyboardControl.SendCtrlV(command.remote_control_keyboard_content);
-                        else if (inputLower == "ctrl+keyx")
-                            KeyboardControl.SendCtrlX();
-                        else if (inputLower == "ctrl+keyz")
-                            KeyboardControl.SendCtrlZ();
-                        else if (inputLower == "ctrl+keyy")
-                            KeyboardControl.SendCtrlY();
-                        else if (inputLower == "ctrl+keys")
-                            KeyboardControl.SendCtrlS();
-                        else if (inputLower == "ctrl+keyn")
-                            KeyboardControl.SendCtrlN();
-                        else if (inputLower == "ctrl+keyp")
-                            KeyboardControl.SendCtrlP();
-                        else if (inputLower == "ctrl+keyf")
-                            KeyboardControl.SendCtrlF();
-                        else if (inputLower == "ctrl+shift+keyt")
-                            KeyboardControl.SendCtrlShiftT();
-                        else if (inputLower == "ctrlaltdel")
-                            KeyboardControl.SendCtrlAltDelete();
-                        else if (inputLower == "ctrl+backspace")
-                            KeyboardControl.SendCtrlBackspace();
-                        else if (inputLower == "ctrl+arrowleft")
-                            KeyboardControl.SendCtrlArrowLeft();
-                        else if (inputLower == "ctrl+arrowright")
-                            KeyboardControl.SendCtrlArrowRight();
-                        else if (inputLower == "ctrl+arrowup")
-                            KeyboardControl.SendCtrlArrowUp();
-                        else if (inputLower == "ctrl+arrowdown")
-                            KeyboardControl.SendCtrlArrowDown();
-                        else if (inputLower == "ctrl+shift+arrowleft")
-                            KeyboardControl.SendCtrlArrowLeft();
-                        else if (inputLower == "ctrl+shift+arrowright")
-                            KeyboardControl.SendCtrlArrowRight();
-                        else if (inputLower == "ctrl+keyr")
-                            KeyboardControl.SendCtrlR();
-                        else
+                        try
                         {
-                            if (command.remote_control_keyboard_input.Length > 1)
-                            {
-                                if (shift)
-                                    inputLower = inputLower.Replace("shift+", ""); // Remove shift from the input for ASCII mapping
+                            string[] mouseCoordinates = command.remote_control_mouse_xyz.Split(',');
+                            int x = Convert.ToInt32(mouseCoordinates[0]);
+                            int y = Convert.ToInt32(mouseCoordinates[1]);
+                            int screenIndex = Convert.ToInt32(command.remote_control_screen_index);
 
-                                var asciiCode = Keys.MapKeyStringToAscii(inputLower);
-                                if (asciiCode.HasValue)
+                            // Check if this is a click action or just a move
+                            bool isClickAction = command.remote_control_mouse_action != "4";
+
+                            if (OperatingSystem.IsWindows())
+                            {
+                                if (isClickAction)
                                 {
-                                    await KeyboardControl.SendKey(asciiCode.Value, shift);
+                                    // Click actions: Move with lock + perform action
+                                    await MouseControl.MoveMouse(x, y, screenIndex);
+
+                                    switch (command.remote_control_mouse_action)
+                                    {
+                                        case "0": // Left Click
+                                            // Double-click detection: If two clicks arrive within the detection window
+                                            var now = DateTime.Now;
+                                            var timeSinceLastClick = (now - _lastLeftClickTime).TotalMilliseconds;
+
+                                            if (timeSinceLastClick < DOUBLE_CLICK_DETECTION_MS && timeSinceLastClick > 0)
+                                            {
+                                                // This is a double-click!
+                                                Console.WriteLine($"Double-click detected! ({timeSinceLastClick:F0}ms since last click)");
+                                                await MouseControl.DoubleClickMouse();
+                                                _lastLeftClickTime = DateTime.MinValue; // Reset to prevent triple-click
+                                            }
+                                            else
+                                            {
+                                                // Single click
+                                                await MouseControl.LeftClickMouse();
+                                                _lastLeftClickTime = now;
+                                            }
+                                            break;
+
+                                        case "1": // Right Click
+                                            await MouseControl.RightClickMouse();
+                                            break;
+
+                                        case "2": // Mouse Down
+                                            await MouseControl.LeftMouseDown();
+                                            break;
+
+                                        case "3": // Mouse Up
+                                            await MouseControl.LeftMouseUp();
+                                            break;
+                                    }
                                 }
                                 else
                                 {
-                                    Console.WriteLine($"Unknown keyboard input: {input}");
+                                    // Move only: Use non-blocking move (no lock)
+                                    await MouseControl.MoveMouseNoLock(x, y, screenIndex);
                                 }
                             }
-                            else
+                            else if (OperatingSystem.IsLinux())
                             {
-                                var sim1 = new InputSimulator();
-                                sim1.Keyboard.TextEntry(command.remote_control_keyboard_input);
+                                if (isClickAction)
+                                {
+                                    // Click actions: Move with lock + perform action
+                                    await MouseControlLinux.MoveMouse(x, y, screenIndex);
+
+                                    switch (command.remote_control_mouse_action)
+                                    {
+                                        case "0": // Left Click
+                                            var now = DateTime.Now;
+                                            var timeSinceLastClick = (now - _lastLeftClickTime).TotalMilliseconds;
+
+                                            if (timeSinceLastClick < DOUBLE_CLICK_DETECTION_MS && timeSinceLastClick > 0)
+                                            {
+                                                Console.WriteLine($"Double-click detected! ({timeSinceLastClick:F0}ms since last click)");
+                                                await MouseControlLinux.DoubleClickMouse();
+                                                _lastLeftClickTime = DateTime.MinValue;
+                                            }
+                                            else
+                                            {
+                                                await MouseControlLinux.LeftClickMouse();
+                                                _lastLeftClickTime = now;
+                                            }
+                                            break;
+
+                                        case "1": // Right Click
+                                            await MouseControlLinux.RightClickMouse();
+                                            break;
+
+                                        case "2": // Mouse Down
+                                            await MouseControlLinux.LeftMouseDown();
+                                            break;
+
+                                        case "3": // Mouse Up
+                                            await MouseControlLinux.LeftMouseUp();
+                                            break;
+                                    }
+                                }
+                                else
+                                {
+                                    // Move only: Use non-blocking move (no lock)
+                                    await MouseControlLinux.MoveMouseNoLock(x, y, screenIndex);
+                                }
+                            }
+                            else if (OperatingSystem.IsMacOS())
+                            {
+                                if (isClickAction)
+                                {
+                                    // Click actions: Move with lock + perform action
+                                    await MouseControlMacOS.MoveMouse(x, y, screenIndex);
+
+                                    switch (command.remote_control_mouse_action)
+                                    {
+                                        case "0": // Left Click
+                                            var now = DateTime.Now;
+                                            var timeSinceLastClick = (now - _lastLeftClickTime).TotalMilliseconds;
+
+                                            if (timeSinceLastClick < DOUBLE_CLICK_DETECTION_MS && timeSinceLastClick > 0)
+                                            {
+                                                Console.WriteLine($"Double-click detected! ({timeSinceLastClick:F0}ms since last click)");
+                                                await MouseControlMacOS.DoubleClickMouse();
+                                                _lastLeftClickTime = DateTime.MinValue;
+                                            }
+                                            else
+                                            {
+                                                await MouseControlMacOS.LeftClickMouse();
+                                                _lastLeftClickTime = now;
+                                            }
+                                            break;
+
+                                        case "1": // Right Click
+                                            await MouseControlMacOS.RightClickMouse();
+                                            break;
+
+                                        case "2": // Mouse Down
+                                            await MouseControlMacOS.LeftMouseDown();
+                                            break;
+
+                                        case "3": // Mouse Up
+                                            await MouseControlMacOS.LeftMouseUp();
+                                            break;
+                                    }
+                                }
+                                else
+                                {
+                                    // Move only: Use non-blocking move (no lock)
+                                    await MouseControlMacOS.MoveMouseNoLock(x, y, screenIndex);
+                                }
                             }
                         }
-                        break;
-                }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Mouse control error: {ex.Message}");
+                        }
+                    });
+                    break;
+                case "2": // Keyboard Input
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var input = command.remote_control_keyboard_input?.Trim();
+
+                            if (string.IsNullOrEmpty(input))
+                                return;
+
+                            var inputLower = input.ToLowerInvariant();
+
+                            // If shift is in the first part of the input, we assume it's a modifier key
+                            bool shift = inputLower.StartsWith("shift+");
+
+                            Console.WriteLine($"Processing keyboard input: {inputLower}, Shift: {shift}");
+
+                            if (OperatingSystem.IsWindows())
+                            {
+                                if (inputLower == "ctrl+keya")
+                                    KeyboardControl.SendCtrlA();
+                                else if (inputLower == "ctrl+keyc")
+                                    KeyboardControl.SendCtrlC();
+                                else if (inputLower == "ctrl+keyv")
+                                    KeyboardControl.SendCtrlV(command.remote_control_keyboard_content);
+                                else if (inputLower == "ctrl+keyx")
+                                    KeyboardControl.SendCtrlX();
+                                else if (inputLower == "ctrl+keyz")
+                                    KeyboardControl.SendCtrlZ();
+                                else if (inputLower == "ctrl+keyy")
+                                    KeyboardControl.SendCtrlY();
+                                else if (inputLower == "ctrl+keys")
+                                    KeyboardControl.SendCtrlS();
+                                else if (inputLower == "ctrl+keyn")
+                                    KeyboardControl.SendCtrlN();
+                                else if (inputLower == "ctrl+keyp")
+                                    KeyboardControl.SendCtrlP();
+                                else if (inputLower == "ctrl+keyf")
+                                    KeyboardControl.SendCtrlF();
+                                else if (inputLower == "ctrl+shift+keyt")
+                                    KeyboardControl.SendCtrlShiftT();
+                                else if (inputLower == "ctrlaltdel")
+                                    KeyboardControl.SendCtrlAltDelete();
+                                else if (inputLower == "ctrl+backspace")
+                                    KeyboardControl.SendCtrlBackspace();
+                                else if (inputLower == "ctrl+arrowleft")
+                                    KeyboardControl.SendCtrlArrowLeft();
+                                else if (inputLower == "ctrl+arrowright")
+                                    KeyboardControl.SendCtrlArrowRight();
+                                else if (inputLower == "ctrl+arrowup")
+                                    KeyboardControl.SendCtrlArrowUp();
+                                else if (inputLower == "ctrl+arrowdown")
+                                    KeyboardControl.SendCtrlArrowDown();
+                                else if (inputLower == "ctrl+shift+arrowleft")
+                                    KeyboardControl.SendCtrlArrowLeft();
+                                else if (inputLower == "ctrl+shift+arrowright")
+                                    KeyboardControl.SendCtrlArrowRight();
+                                else if (inputLower == "ctrl+keyr")
+                                    KeyboardControl.SendCtrlR();
+                                else
+                                {
+                                    if (command.remote_control_keyboard_input.Length > 1)
+                                    {
+                                        if (shift)
+                                            inputLower = inputLower.Replace("shift+", ""); // Remove shift from the input for ASCII mapping
+
+                                        var asciiCode = Keys.MapKeyStringToAscii(inputLower);
+                                        if (asciiCode.HasValue)
+                                        {
+                                            await KeyboardControl.SendKey(asciiCode.Value, shift);
+                                        }
+                                        else
+                                        {
+                                            Console.WriteLine($"Unknown keyboard input: {input}");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        var sim1 = new InputSimulator();
+                                        sim1.Keyboard.TextEntry(command.remote_control_keyboard_input);
+                                    }
+                                }
+                            }
+                            else if (OperatingSystem.IsLinux())
+                            {
+                                if (inputLower == "ctrl+keya")
+                                    KeyboardControlLinux.SendCtrlA();
+                                else if (inputLower == "ctrl+keyc")
+                                    KeyboardControlLinux.SendCtrlC();
+                                else if (inputLower == "ctrl+keyv")
+                                    KeyboardControlLinux.SendCtrlV(command.remote_control_keyboard_content);
+                                else if (inputLower == "ctrl+keyx")
+                                    KeyboardControlLinux.SendCtrlX();
+                                else if (inputLower == "ctrl+keyz")
+                                    KeyboardControlLinux.SendCtrlZ();
+                                else if (inputLower == "ctrl+keyy")
+                                    KeyboardControlLinux.SendCtrlY();
+                                else if (inputLower == "ctrl+keys")
+                                    KeyboardControlLinux.SendCtrlS();
+                                else if (inputLower == "ctrl+keyn")
+                                    KeyboardControlLinux.SendCtrlN();
+                                else if (inputLower == "ctrl+keyp")
+                                    KeyboardControlLinux.SendCtrlP();
+                                else if (inputLower == "ctrl+keyf")
+                                    KeyboardControlLinux.SendCtrlF();
+                                else if (inputLower == "ctrl+shift+keyt")
+                                    KeyboardControlLinux.SendCtrlShiftT();
+                                else if (inputLower == "ctrlaltdel")
+                                    KeyboardControlLinux.SendCtrlAltDelete();
+                                else if (inputLower == "ctrl+backspace")
+                                    KeyboardControlLinux.SendCtrlBackspace();
+                                else if (inputLower == "ctrl+arrowleft")
+                                    KeyboardControlLinux.SendCtrlArrowLeft();
+                                else if (inputLower == "ctrl+arrowright")
+                                    KeyboardControlLinux.SendCtrlArrowRight();
+                                else if (inputLower == "ctrl+arrowup")
+                                    KeyboardControlLinux.SendCtrlArrowUp();
+                                else if (inputLower == "ctrl+arrowdown")
+                                    KeyboardControlLinux.SendCtrlArrowDown();
+                                else if (inputLower == "ctrl+shift+arrowleft")
+                                    KeyboardControlLinux.SendCtrlArrowLeft();
+                                else if (inputLower == "ctrl+shift+arrowright")
+                                    KeyboardControlLinux.SendCtrlArrowRight();
+                                else if (inputLower == "ctrl+keyr")
+                                    KeyboardControlLinux.SendCtrlR();
+                                else
+                                {
+                                    if (command.remote_control_keyboard_input.Length > 1)
+                                    {
+                                        if (shift)
+                                            inputLower = inputLower.Replace("shift+", "");
+
+                                        var asciiCode = Keys.MapKeyStringToAscii(inputLower);
+                                        if (asciiCode.HasValue)
+                                        {
+                                            await KeyboardControlLinux.SendKey(asciiCode.Value, shift);
+                                        }
+                                        else
+                                        {
+                                            Console.WriteLine($"Unknown keyboard input: {input}");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // Use xdotool/ydotool for single character input on Linux
+                                        KeyboardControlLinux.TypeText(command.remote_control_keyboard_input);
+                                    }
+                                }
+                            }
+                            else if (OperatingSystem.IsMacOS())
+                            {
+                                // macOS keyboard shortcuts (Ctrl -> Cmd mapping is handled in KeyboardControlMacOS)
+                                if (inputLower == "ctrl+keya")
+                                    KeyboardControlMacOS.SendCtrlA();
+                                else if (inputLower == "ctrl+keyc")
+                                    KeyboardControlMacOS.SendCtrlC();
+                                else if (inputLower == "ctrl+keyv")
+                                    KeyboardControlMacOS.SendCtrlV(command.remote_control_keyboard_content);
+                                else if (inputLower == "ctrl+keyx")
+                                    KeyboardControlMacOS.SendCtrlX();
+                                else if (inputLower == "ctrl+keyz")
+                                    KeyboardControlMacOS.SendCtrlZ();
+                                else if (inputLower == "ctrl+keyy")
+                                    KeyboardControlMacOS.SendCtrlY();
+                                else if (inputLower == "ctrl+keys")
+                                    KeyboardControlMacOS.SendCtrlS();
+                                else if (inputLower == "ctrl+keyn")
+                                    KeyboardControlMacOS.SendCtrlN();
+                                else if (inputLower == "ctrl+keyp")
+                                    KeyboardControlMacOS.SendCtrlP();
+                                else if (inputLower == "ctrl+keyf")
+                                    KeyboardControlMacOS.SendCtrlF();
+                                else if (inputLower == "ctrl+shift+keyt")
+                                    KeyboardControlMacOS.SendCtrlShiftT();
+                                else if (inputLower == "ctrlaltdel")
+                                    KeyboardControlMacOS.SendCtrlAltDelete(); // Opens Force Quit on macOS
+                                else if (inputLower == "ctrl+backspace")
+                                    KeyboardControlMacOS.SendCtrlBackspace();
+                                else if (inputLower == "ctrl+arrowleft")
+                                    KeyboardControlMacOS.SendCtrlArrowLeft();
+                                else if (inputLower == "ctrl+arrowright")
+                                    KeyboardControlMacOS.SendCtrlArrowRight();
+                                else if (inputLower == "ctrl+arrowup")
+                                    KeyboardControlMacOS.SendCtrlArrowUp();
+                                else if (inputLower == "ctrl+arrowdown")
+                                    KeyboardControlMacOS.SendCtrlArrowDown();
+                                else if (inputLower == "ctrl+shift+arrowleft")
+                                    KeyboardControlMacOS.SendCtrlArrowLeft();
+                                else if (inputLower == "ctrl+shift+arrowright")
+                                    KeyboardControlMacOS.SendCtrlArrowRight();
+                                else if (inputLower == "ctrl+keyr")
+                                    KeyboardControlMacOS.SendCtrlR();
+                                else
+                                {
+                                    if (command.remote_control_keyboard_input.Length > 1)
+                                    {
+                                        if (shift)
+                                            inputLower = inputLower.Replace("shift+", "");
+
+                                        var asciiCode = Keys.MapKeyStringToAscii(inputLower);
+                                        if (asciiCode.HasValue)
+                                        {
+                                            await KeyboardControlMacOS.SendKey(asciiCode.Value, shift);
+                                        }
+                                        else
+                                        {
+                                            Console.WriteLine($"Unknown keyboard input: {input}");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // Use AppleScript for single character input on macOS
+                                        KeyboardControlMacOS.TypeText(command.remote_control_keyboard_input);
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Keyboard control error: {ex.Message}");
+                        }
+                    });
+                    break;
                 case "3":
                     int screen_indexes = 0;
                     if (OperatingSystem.IsWindows())
-                        screen_indexes = ScreenCapture.Get_Screen_Indexes();
+                        screen_indexes = OldScreenCapture.Get_Screen_Indexes();
+                    else if (OperatingSystem.IsLinux())
+                    {
+                        if (_linuxCaptureInstance == null)
+                        {
+                            _linuxCaptureInstance = new ScreenCaptureLinux(0);
+                            _linuxCaptureInstance.Initialize();
+                        }
+                        screen_indexes = _linuxCaptureInstance.GetScreenCount();
+                    }
                     else if (OperatingSystem.IsMacOS())
-                        screen_indexes = 0;
+                    {
+                        if (_macOSCaptureInstance == null)
+                        {
+                            _macOSCaptureInstance = new ScreenCaptureMacOS(0);
+                            _macOSCaptureInstance.Initialize();
+                        }
+                        screen_indexes = _macOSCaptureInstance.GetScreenCount();
+                    }
 
                     await Local_Server_Send_Message($"screen_indexes${command.response_id}${screen_indexes}");
 
                     break;
                 case "6": // Get clipboard from user
-                    KeyboardControl.SendCtrlC();
-
-                    await Task.Delay(200); // Wait for clipboard to update
-
-                    string clipboardContent = User32.GetClipboardText();
-                    //Logging.Handler.Debug($"Clipboard content: {clipboardContent}", "", "");
-
-                    await Local_Server_Send_Message($"clipboard_content${command.response_id}$clipboard_content%{clipboardContent}");
+                    if (OperatingSystem.IsWindows())
+                    {
+                        KeyboardControl.SendCtrlC();
+                        await Task.Delay(200); // Wait for clipboard to update
+                        string clipboardContent = User32.GetClipboardText();
+                        await Local_Server_Send_Message($"clipboard_content${command.response_id}$clipboard_content%{clipboardContent}");
+                    }
+                    else if (OperatingSystem.IsLinux())
+                    {
+                        KeyboardControlLinux.SendCtrlC();
+                        await Task.Delay(200); // Wait for clipboard to update
+                        string clipboardContent = KeyboardControlLinux.GetClipboardText();
+                        await Local_Server_Send_Message($"clipboard_content${command.response_id}$clipboard_content%{clipboardContent}");
+                    }
+                    else if (OperatingSystem.IsMacOS())
+                    {
+                        KeyboardControlMacOS.SendCmdC(); // macOS uses Cmd+C
+                        await Task.Delay(200); // Wait for clipboard to update
+                        string clipboardContent = KeyboardControlMacOS.GetClipboardText();
+                        await Local_Server_Send_Message($"clipboard_content${command.response_id}$clipboard_content%{clipboardContent}");
+                    }
                     break;
                 case "7": // Send text
-
                     Console.WriteLine($"Sending text: {command.remote_control_keyboard_input}");
 
-                    var sim = new InputSimulator();
-                    sim.Keyboard.TextEntry(command.remote_control_keyboard_input);
-
+                    if (OperatingSystem.IsWindows())
+                    {
+                        var sim = new InputSimulator();
+                        sim.Keyboard.TextEntry(command.remote_control_keyboard_input);
+                    }
+                    else if (OperatingSystem.IsLinux())
+                    {
+                        KeyboardControlLinux.TypeText(command.remote_control_keyboard_input);
+                    }
+                    else if (OperatingSystem.IsMacOS())
+                    {
+                        KeyboardControlMacOS.TypeText(command.remote_control_keyboard_input);
+                    }
                     break;
                 default:
                     Console.WriteLine("Unknown command type.");
@@ -467,7 +874,147 @@ class UserClient
         _cancellationTokenSource.Cancel();
         _stream?.Close();
         _client?.Close();
+        
+        // Restore animations if they were disabled
+        if (_remoteSessionActive && OperatingSystem.IsWindows())
+        {
+            _remoteSessionActive = false;
+            AnimationManager.RestoreAnimations();
+        }
+        
+        // Cleanup session idle timer
+        _sessionIdleTimer?.Dispose();
+        _sessionIdleTimer = null;
+        
+        // Cleanup Desktop Duplication instances (Windows)
+        foreach (var capture in _captureInstances.Values)
+        {
+            try
+            {
+                capture?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error disposing capture instance: {ex.Message}");
+            }
+        }
+        _captureInstances.Clear();
+        
+        // Cleanup Linux screen capture instance
+        if (_linuxCaptureInstance != null)
+        {
+            try
+            {
+                _linuxCaptureInstance.Dispose();
+                _linuxCaptureInstance = null;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error disposing Linux capture instance: {ex.Message}");
+            }
+        }
+        
+        // Cleanup macOS screen capture instance
+        if (_macOSCaptureInstance != null)
+        {
+            try
+            {
+                _macOSCaptureInstance.Dispose();
+                _macOSCaptureInstance = null;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error disposing macOS capture instance: {ex.Message}");
+            }
+        }
+        
+        // Cleanup Linux input resources
+        if (OperatingSystem.IsLinux())
+        {
+            MouseControlLinux.Cleanup();
+            KeyboardControlLinux.Cleanup();
+        }
+        
+        // Cleanup macOS input resources
+        if (OperatingSystem.IsMacOS())
+        {
+            MouseControlMacOS.Cleanup();
+            KeyboardControlMacOS.Cleanup();
+        }
+        
+        // Cleanup screen capture semaphores
+        foreach (var semaphore in _screenCaptureLocks.Values)
+        {
+            try
+            {
+                semaphore?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error disposing screen lock: {ex.Message}");
+            }
+        }
+        _screenCaptureLocks.Clear();
+        _latestScreenshotRequest.Clear();
+        
         Console.WriteLine("Disconnected from the server.");
+    }
+
+    // Cache Desktop Duplication instances per screen to avoid re-initialization overhead
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, DesktopDuplicationApiCapture> _captureInstances = 
+        new System.Collections.Concurrent.ConcurrentDictionary<int, DesktopDuplicationApiCapture>();
+    
+    // Linux screen capture instance (nullable - created on first capture request)
+    private ScreenCaptureLinux? _linuxCaptureInstance;
+    
+    // macOS screen capture instance (nullable - created on first capture request)
+    private ScreenCaptureMacOS? _macOSCaptureInstance;
+    
+    // Semaphore per screen to ensure screenshots are processed sequentially (prevent old frames arriving after new ones)
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, SemaphoreSlim> _screenCaptureLocks = 
+        new System.Collections.Concurrent.ConcurrentDictionary<int, SemaphoreSlim>();
+    
+    // Track latest screenshot request per screen (for frame dropping)
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, Command> _latestScreenshotRequest = 
+        new System.Collections.Concurrent.ConcurrentDictionary<int, Command>();
+
+    /// <summary>
+    /// Sequential wrapper for screenshot capture to prevent out-of-order frame delivery
+    /// WITH FRAME DROPPING: Discards old requests if newer ones are waiting
+    /// </summary>
+    private async Task CaptureAndSendScreenshotSequential(Command command)
+    {
+        int screenIndex = Convert.ToInt32(command.remote_control_screen_index);
+        
+        // Update the latest request for this screen
+        _latestScreenshotRequest.AddOrUpdate(screenIndex, command, (key, oldValue) => command);
+        
+        // Get or create semaphore for this screen
+        var screenLock = _screenCaptureLocks.GetOrAdd(screenIndex, _ => new SemaphoreSlim(1, 1));
+        
+        // Try to acquire lock without waiting - if busy, skip this frame
+        if (!screenLock.Wait(0))
+        {
+            Console.WriteLine($"[Screen {screenIndex}] Dropping frame - previous capture still in progress");
+            return; // Drop this frame, it's outdated
+        }
+        
+        try
+        {
+            // Double-check: Is this still the latest request?
+            if (_latestScreenshotRequest.TryGetValue(screenIndex, out var latestRequest) && 
+                latestRequest.response_id != command.response_id)
+            {
+                Console.WriteLine($"[Screen {screenIndex}] Dropping outdated frame (newer request arrived)");
+                return; // Newer request has arrived, drop this one
+            }
+            
+            await CaptureAndSendScreenshot(command);
+        }
+        finally
+        {
+            screenLock.Release();
+        }
     }
 
     private async Task CaptureAndSendScreenshot(Command command)
@@ -475,9 +1022,55 @@ class UserClient
         try
         {
             byte[] imageBytes = null;
+            
             if (OperatingSystem.IsWindows())
-                imageBytes = await ScreenCapture.CaptureScreenToBytes(Convert.ToInt32(command.remote_control_screen_index));
-            // else if (OperatingSystem.IsMacOS()) ...
+            {
+                int screenIndex = Convert.ToInt32(command.remote_control_screen_index);
+                
+                // Get or create Desktop Duplication capture instance for this screen
+                var capture = _captureInstances.GetOrAdd(screenIndex, idx =>
+                {
+                    // Find the correct adapter and output for this screen
+                    var (adapterIndex, outputIndex) = DesktopDuplicationApiCapture.FindAdapterForScreen(idx);
+                    var newCapture = new DesktopDuplicationApiCapture(adapterIndex, outputIndex);
+                    newCapture.Initialize();
+                    Console.WriteLine($"Created Desktop Duplication capture instance for screen {idx} (Adapter {adapterIndex}, Output {outputIndex})");
+                    return newCapture;
+                });
+                
+                // Capture using GPU-accelerated Desktop Duplication API
+                imageBytes = await capture.CaptureScreenToBytes(screenIndex);
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                int screenIndex = Convert.ToInt32(command.remote_control_screen_index);
+                
+                // Get or create Linux screen capture instance
+                if (_linuxCaptureInstance == null)
+                {
+                    _linuxCaptureInstance = new ScreenCaptureLinux(screenIndex);
+                    _linuxCaptureInstance.Initialize();
+                    Console.WriteLine($"Created Linux screen capture instance for screen {screenIndex}");
+                }
+                
+                // Capture screen
+                imageBytes = await _linuxCaptureInstance.CaptureScreenToBytes(screenIndex);
+            }
+            else if (OperatingSystem.IsMacOS())
+            {
+                int screenIndex = Convert.ToInt32(command.remote_control_screen_index);
+                
+                // Get or create macOS screen capture instance
+                if (_macOSCaptureInstance == null)
+                {
+                    _macOSCaptureInstance = new ScreenCaptureMacOS(screenIndex);
+                    _macOSCaptureInstance.Initialize();
+                    Console.WriteLine($"Created macOS screen capture instance for screen {screenIndex}");
+                }
+                
+                // Capture screen
+                imageBytes = await _macOSCaptureInstance.CaptureScreenToBytes(screenIndex);
+            }
 
             if (imageBytes != null && imageBytes.Length > 0)
             {
@@ -493,21 +1086,145 @@ class UserClient
 
 class Program
 {
+    static bool IsAlreadyRunningForCurrentUser()
+    {
+        try
+        {
+            string currentProcessName = Process.GetCurrentProcess().ProcessName;
+            string currentUsername = Environment.UserName;
+            int currentProcessId = Process.GetCurrentProcess().Id;
+
+            // Get all processes with the same name
+            Process[] processes = Process.GetProcessesByName(currentProcessName);
+
+            foreach (Process process in processes)
+            {
+                // Skip the current process
+                if (process.Id == currentProcessId)
+                    continue;
+
+                try
+                {
+                    // Try to get the username of the process owner
+                    string processUsername = GetProcessOwner(process.Id);
+                    
+                    if (!string.IsNullOrEmpty(processUsername) && 
+                        processUsername.Equals(currentUsername, StringComparison.OrdinalIgnoreCase))
+                    {
+                        Console.WriteLine($"Process is already running for user '{currentUsername}' (PID: {process.Id})");
+                        return true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Could not check process {process.Id}: {ex.Message}");
+                }
+            }
+            
+            Console.WriteLine("No existing process found for the current user.");
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error checking for existing process: {ex.Message}");
+            return false;
+        }
+    }
+
+    static string GetProcessOwner(int processId)
+    {
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                string query = $"SELECT * FROM Win32_Process WHERE ProcessId = {processId}";
+                using (var searcher = new System.Management.ManagementObjectSearcher(query))
+                {
+                    foreach (System.Management.ManagementObject obj in searcher.Get())
+                    {
+                        string[] argList = new string[] { string.Empty, string.Empty };
+                        int returnVal = Convert.ToInt32(obj.InvokeMethod("GetOwner", argList));
+                        if (returnVal == 0)
+                        {
+                            return argList[0]; // Username
+                        }
+                    }
+                }
+            }
+            else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+            {
+                // On Linux/macOS, use ps command to get process owner
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "ps",
+                    Arguments = $"-o user= -p {processId}",
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using (var process = Process.Start(psi))
+                {
+                    if (process != null)
+                    {
+                        string output = process.StandardOutput.ReadToEnd().Trim();
+                        process.WaitForExit();
+                        return output;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error getting process owner for PID {processId}: {ex.Message}");
+        }
+
+        return string.Empty;
+    }
+
     static async Task Main(string[] args)
     {
         try
         {
             Console.WriteLine("Starting User Process...");
 
-            Dpi.SetProcessDpiAwareness(Dpi.ProcessDpiAwareness.Process_Per_Monitor_DPI_Aware);
-
-            /*IntPtr handle = User32.LoadLibrary("sas.dll");
-            if (handle == IntPtr.Zero)
+            // Check if the process is already running for the current user
+            if (IsAlreadyRunningForCurrentUser())
             {
-                Console.WriteLine("Failed to load sas.dll. Ensure it is present in the application directory.");
+                Console.WriteLine("Process is already running for the current user. Exiting...");
                 return;
-            }*/
-            //Console.WriteLine("sas.dll loaded successfully.");
+            }
+
+            // Windows-specific initialization
+            if (OperatingSystem.IsWindows())
+            {
+                Dpi.SetProcessDpiAwareness(Dpi.ProcessDpiAwareness.Process_Per_Monitor_DPI_Aware);
+
+                // Start session monitoring for seamless transition between login screen and user session
+                SessionManager.StartSessionMonitoring(1000);
+                
+                // Subscribe to session change events
+                SessionManager.OnSessionChanged += (oldSession, newSession) =>
+                {
+                    Console.WriteLine($"Session transition detected: {oldSession} -> {newSession}");
+                };
+            }
+            
+            // Linux-specific initialization
+            if (OperatingSystem.IsLinux())
+            {
+                Console.WriteLine("Running on Linux - initializing Linux screen capture and input...");
+                // Linux initialization is done lazily when first capture/input is requested
+            }
+            
+            // macOS-specific initialization
+            if (OperatingSystem.IsMacOS())
+            {
+                Console.WriteLine("Running on macOS - initializing macOS screen capture and input...");
+                // Initialize keyboard control (checks permissions)
+                KeyboardControlMacOS.Initialize();
+            }
 
             var client = new UserClient();
             await client.Local_Server_Connect();
@@ -518,6 +1235,14 @@ class Program
         catch (Exception ex)
         {
             Console.WriteLine($"An error occurred: {ex.Message}");
+        }
+        finally
+        {
+            // Clean up session monitoring (Windows only)
+            if (OperatingSystem.IsWindows())
+            {
+                SessionManager.StopSessionMonitoring();
+            }
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿using NetLock_RMM_User_Process.Windows.Helper;
+﻿﻿using NetLock_RMM_User_Process.Windows.Helper;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace NetLock_RMM_User_Process.Helper.Keyboard
+namespace NetLock_RMM_User_Process.Windows.Keyboard
 {
     internal class KeyboardControl
     {
@@ -39,6 +39,9 @@ namespace NetLock_RMM_User_Process.Helper.Keyboard
         {
             try
             {
+                // Ensure we're on the input desktop before keyboard operations
+                SessionManager.TrySwitchToInputDesktop();
+                
                 if (shift)
                 {
                     // Shift gedrückt halten
@@ -81,6 +84,9 @@ namespace NetLock_RMM_User_Process.Helper.Keyboard
         {
             try
             {
+                // Ensure we're on the input desktop before keyboard operations
+                SessionManager.TrySwitchToInputDesktop();
+                
                 //Console.WriteLine("Sending Ctrl + V with content: " + content);
 
                 if (!string.IsNullOrEmpty(content))

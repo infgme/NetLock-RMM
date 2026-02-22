@@ -171,107 +171,198 @@ namespace NetLock_RMM_Server.Agent.Windows
                         cmd.ExecuteNonQuery();
                     }
                 }
-                else //device not existing, create
+                else //device not existing by access_key, check for device_name and hwid as fallback (reinstall scenario)
                 {
                     await reader.CloseAsync();
 
-                    (string tenant_name, string location_name) = await Helper.Get_Tenant_Location_Name(tenant_id, location_id);
+                    // Fallback: Search for existing device with same device_name and hwid
+                    string fallback_query = "SELECT * FROM `devices` WHERE device_name = @device_name AND hwid = @hwid;";
+                    Logging.Handler.Debug("Modules.Authentification.Verify_Device", "Fallback_MySQL_Query", fallback_query);
 
-                    device_exists = false;
-                    string execute_query = "INSERT INTO `devices` " +
-                        "(`agent_version`, " +
-                        "`tenant_id`, " +
-                        "`tenant_name`, " +
-                        "`location_id`, " +
-                        "`location_name`, " +
-                        "`device_name`, " +
-                        "`access_key`, " +
-                        "`hwid`, " +
-                        "`platform`, " +
-                        "`last_access`, " +
-                        "`ip_address_internal`, " +
-                        "`ip_address_external`, " +
-                        "`operating_system`, " +
-                        "`domain`, " +
-                        "`antivirus_solution`, " +
-                        "`firewall_status`, " +
-                        "`architecture`, " +
-                        "`last_boot`, " +
-                        "`timezone`, " +
-                        "`cpu`, " +
-                        "`cpu_usage`, " +
-                        "`mainboard`, " +
-                        "`gpu`, " +
-                        "`ram`, " +
-                        "`ram_usage`, " +
-                        "`tpm`, " +
-                        "`last_active_user`, " +
-                        "`environment_variables`) " +
-                        "VALUES " +
-                        "(@agent_version, " +
-                        "@tenant_id, " +
-                        "@tenant_name, " +
-                        "@location_id, " +
-                        "@location_name, " +
-                        "@device_name, " +
-                        "@access_key, " +
-                        "@hwid, " +
-                        "@platform, " +
-                        "@last_access, " +
-                        "@ip_address_internal, " +
-                        "@ip_address_external, " +
-                        "@operating_system, " +
-                        "@domain, " +
-                        "@antivirus_solution, " +
-                        "@firewall_status, " +
-                        "@architecture, " +
-                        "@last_boot, " +
-                        "@timezone, " +
-                        "@cpu, " +
-                        "@cpu_usage, " +
-                        "@mainboard, " +
-                        "@gpu, " +
-                        "@ram, " +
-                        "@ram_usage, " +
-                        "@tpm, " +
-                        "@last_active_user, " +
-                        "@environment_variables);";
+                    MySqlCommand fallback_command = new MySqlCommand(fallback_query, conn);
+                    fallback_command.Parameters.AddWithValue("@device_name", device_identity.device_name);
+                    fallback_command.Parameters.AddWithValue("@hwid", device_identity.hwid);
 
-                    MySqlCommand cmd = new MySqlCommand(execute_query, conn);
+                    DbDataReader fallback_reader = await fallback_command.ExecuteReaderAsync();
 
-                    cmd.Parameters.AddWithValue("@agent_version", device_identity.agent_version);
-                    cmd.Parameters.AddWithValue("@tenant_id", tenant_id);
-                    cmd.Parameters.AddWithValue("@tenant_name", tenant_name);
-                    cmd.Parameters.AddWithValue("@location_id", location_id);
-                    cmd.Parameters.AddWithValue("@location_name", location_name);
-                    cmd.Parameters.AddWithValue("@device_name", device_identity.device_name);
-                    cmd.Parameters.AddWithValue("@access_key", device_identity.access_key);
-                    cmd.Parameters.AddWithValue("@hwid", device_identity.hwid);
-                    cmd.Parameters.AddWithValue("@platform", device_identity.platform);
-                    cmd.Parameters.AddWithValue("@last_access", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
-                    cmd.Parameters.AddWithValue("@ip_address_internal", device_identity.ip_address_internal);
-                    cmd.Parameters.AddWithValue("@ip_address_external", ip_address_external);
-                    cmd.Parameters.AddWithValue("@operating_system", device_identity.operating_system);
-                    cmd.Parameters.AddWithValue("@domain", device_identity.domain);
-                    cmd.Parameters.AddWithValue("@antivirus_solution", device_identity.antivirus_solution);
-                    cmd.Parameters.AddWithValue("@firewall_status", device_identity.firewall_status);
-                    cmd.Parameters.AddWithValue("@architecture", device_identity.architecture);
-                    cmd.Parameters.AddWithValue("@last_boot", Helper.Truncate(device_identity.last_boot));
-                    cmd.Parameters.AddWithValue("@timezone", device_identity.timezone);
-                    cmd.Parameters.AddWithValue("@cpu", Helper.Truncate(device_identity.cpu));
-                    cmd.Parameters.AddWithValue("@cpu_usage", device_identity.cpu_usage);
-                    cmd.Parameters.AddWithValue("@mainboard", Helper.Truncate(device_identity.mainboard));
-                    cmd.Parameters.AddWithValue("@gpu", Helper.Truncate(device_identity.gpu));
-                    cmd.Parameters.AddWithValue("@ram", Helper.Truncate(device_identity.ram));
-                    cmd.Parameters.AddWithValue("@ram_usage", device_identity.ram_usage);
-                    cmd.Parameters.AddWithValue("@tpm", Helper.Truncate(device_identity.tpm));
-                    cmd.Parameters.AddWithValue("@environment_variables", device_identity.environment_variables);
-                    cmd.Parameters.AddWithValue("@last_active_user", Helper.Truncate(device_identity.last_active_user));
+                    bool device_found_by_name_and_hwid = false;
 
-                    cmd.ExecuteNonQuery();
+                    if (fallback_reader.HasRows)
+                    {
+                        await fallback_reader.ReadAsync();
+                        device_found_by_name_and_hwid = true;
+                        
+                        Logging.Handler.Debug("Modules.Authentification.Verify_Device", "Fallback Match", 
+                            $"Found existing device with same device_name ({device_identity.device_name}) and hwid ({device_identity.hwid}). Updating access_key from {fallback_reader["access_key"]} to {device_identity.access_key}");
+                        
+                        await fallback_reader.CloseAsync();
 
-                    authentification_result = "unauthorized";
-                    device_exists = false;
+                        // Update existing device with new access_key and reset authorization
+                        string update_query = "UPDATE `devices` SET " +
+                            "`access_key` = @access_key, " +
+                            "`agent_version` = @agent_version, " +
+                            "`authorized` = 0, " +
+                            "`synced` = 0, " +
+                            "`platform` = @platform, " +
+                            "`last_access` = @last_access, " +
+                            "`ip_address_internal` = @ip_address_internal, " +
+                            "`ip_address_external` = @ip_address_external, " +
+                            "`operating_system` = @operating_system, " +
+                            "`domain` = @domain, " +
+                            "`antivirus_solution` = @antivirus_solution, " +
+                            "`firewall_status` = @firewall_status, " +
+                            "`architecture` = @architecture, " +
+                            "`last_boot` = @last_boot, " +
+                            "`timezone` = @timezone, " +
+                            "`cpu` = @cpu, " +
+                            "`cpu_usage` = @cpu_usage, " +
+                            "`mainboard` = @mainboard, " +
+                            "`gpu` = @gpu, " +
+                            "`ram` = @ram, " +
+                            "`ram_usage` = @ram_usage, " +
+                            "`tpm` = @tpm, " +
+                            "`last_active_user` = @last_active_user, " +
+                            "`environment_variables` = @environment_variables " +
+                            "WHERE device_name = @device_name AND hwid = @hwid;";
+
+                        MySqlCommand update_cmd = new MySqlCommand(update_query, conn);
+                        update_cmd.Parameters.AddWithValue("@access_key", device_identity.access_key);
+                        update_cmd.Parameters.AddWithValue("@agent_version", device_identity.agent_version);
+                        update_cmd.Parameters.AddWithValue("@device_name", device_identity.device_name);
+                        update_cmd.Parameters.AddWithValue("@hwid", device_identity.hwid);
+                        update_cmd.Parameters.AddWithValue("@platform", device_identity.platform);
+                        update_cmd.Parameters.AddWithValue("@last_access", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                        update_cmd.Parameters.AddWithValue("@ip_address_internal", device_identity.ip_address_internal);
+                        update_cmd.Parameters.AddWithValue("@ip_address_external", ip_address_external);
+                        update_cmd.Parameters.AddWithValue("@operating_system", device_identity.operating_system);
+                        update_cmd.Parameters.AddWithValue("@domain", device_identity.domain);
+                        update_cmd.Parameters.AddWithValue("@antivirus_solution", device_identity.antivirus_solution);
+                        update_cmd.Parameters.AddWithValue("@firewall_status", device_identity.firewall_status);
+                        update_cmd.Parameters.AddWithValue("@architecture", device_identity.architecture);
+                        update_cmd.Parameters.AddWithValue("@last_boot", Helper.Truncate(device_identity.last_boot));
+                        update_cmd.Parameters.AddWithValue("@timezone", device_identity.timezone);
+                        update_cmd.Parameters.AddWithValue("@cpu", Helper.Truncate(device_identity.cpu));
+                        update_cmd.Parameters.AddWithValue("@cpu_usage", device_identity.cpu_usage);
+                        update_cmd.Parameters.AddWithValue("@mainboard", Helper.Truncate(device_identity.mainboard));
+                        update_cmd.Parameters.AddWithValue("@gpu", Helper.Truncate(device_identity.gpu));
+                        update_cmd.Parameters.AddWithValue("@ram", Helper.Truncate(device_identity.ram));
+                        update_cmd.Parameters.AddWithValue("@ram_usage", device_identity.ram_usage);
+                        update_cmd.Parameters.AddWithValue("@tpm", Helper.Truncate(device_identity.tpm));
+                        update_cmd.Parameters.AddWithValue("@environment_variables", device_identity.environment_variables);
+                        update_cmd.Parameters.AddWithValue("@last_active_user", Helper.Truncate(device_identity.last_active_user));
+
+                        await update_cmd.ExecuteNonQueryAsync();
+
+                        authentification_result = "unauthorized";
+                        device_exists = true;
+                        
+                        Logging.Handler.Debug("Modules.Authentification.Verify_Device", "Fallback Update", "Device entry updated with new access_key after reinstallation.");
+                    }
+                    else
+                    {
+                        await fallback_reader.CloseAsync();
+
+                        // No existing device found, create new entry
+                        (string tenant_name, string location_name) = await Helper.Get_Tenant_Location_Name(tenant_id, location_id);
+
+                        device_exists = false;
+                        string execute_query = "INSERT INTO `devices` " +
+                            "(`agent_version`, " +
+                            "`tenant_id`, " +
+                            "`tenant_name`, " +
+                            "`location_id`, " +
+                            "`location_name`, " +
+                            "`device_name`, " +
+                            "`access_key`, " +
+                            "`hwid`, " +
+                            "`platform`, " +
+                            "`last_access`, " +
+                            "`ip_address_internal`, " +
+                            "`ip_address_external`, " +
+                            "`operating_system`, " +
+                            "`domain`, " +
+                            "`antivirus_solution`, " +
+                            "`firewall_status`, " +
+                            "`architecture`, " +
+                            "`last_boot`, " +
+                            "`timezone`, " +
+                            "`cpu`, " +
+                            "`cpu_usage`, " +
+                            "`mainboard`, " +
+                            "`gpu`, " +
+                            "`ram`, " +
+                            "`ram_usage`, " +
+                            "`tpm`, " +
+                            "`last_active_user`, " +
+                            "`environment_variables`) " +
+                            "VALUES " +
+                            "(@agent_version, " +
+                            "@tenant_id, " +
+                            "@tenant_name, " +
+                            "@location_id, " +
+                            "@location_name, " +
+                            "@device_name, " +
+                            "@access_key, " +
+                            "@hwid, " +
+                            "@platform, " +
+                            "@last_access, " +
+                            "@ip_address_internal, " +
+                            "@ip_address_external, " +
+                            "@operating_system, " +
+                            "@domain, " +
+                            "@antivirus_solution, " +
+                            "@firewall_status, " +
+                            "@architecture, " +
+                            "@last_boot, " +
+                            "@timezone, " +
+                            "@cpu, " +
+                            "@cpu_usage, " +
+                            "@mainboard, " +
+                            "@gpu, " +
+                            "@ram, " +
+                            "@ram_usage, " +
+                            "@tpm, " +
+                            "@last_active_user, " +
+                            "@environment_variables);";
+
+                        MySqlCommand cmd = new MySqlCommand(execute_query, conn);
+
+                        cmd.Parameters.AddWithValue("@agent_version", device_identity.agent_version);
+                        cmd.Parameters.AddWithValue("@tenant_id", tenant_id);
+                        cmd.Parameters.AddWithValue("@tenant_name", tenant_name);
+                        cmd.Parameters.AddWithValue("@location_id", location_id);
+                        cmd.Parameters.AddWithValue("@location_name", location_name);
+                        cmd.Parameters.AddWithValue("@device_name", device_identity.device_name);
+                        cmd.Parameters.AddWithValue("@access_key", device_identity.access_key);
+                        cmd.Parameters.AddWithValue("@hwid", device_identity.hwid);
+                        cmd.Parameters.AddWithValue("@platform", device_identity.platform);
+                        cmd.Parameters.AddWithValue("@last_access", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                        cmd.Parameters.AddWithValue("@ip_address_internal", device_identity.ip_address_internal);
+                        cmd.Parameters.AddWithValue("@ip_address_external", ip_address_external);
+                        cmd.Parameters.AddWithValue("@operating_system", device_identity.operating_system);
+                        cmd.Parameters.AddWithValue("@domain", device_identity.domain);
+                        cmd.Parameters.AddWithValue("@antivirus_solution", device_identity.antivirus_solution);
+                        cmd.Parameters.AddWithValue("@firewall_status", device_identity.firewall_status);
+                        cmd.Parameters.AddWithValue("@architecture", device_identity.architecture);
+                        cmd.Parameters.AddWithValue("@last_boot", Helper.Truncate(device_identity.last_boot));
+                        cmd.Parameters.AddWithValue("@timezone", device_identity.timezone);
+                        cmd.Parameters.AddWithValue("@cpu", Helper.Truncate(device_identity.cpu));
+                        cmd.Parameters.AddWithValue("@cpu_usage", device_identity.cpu_usage);
+                        cmd.Parameters.AddWithValue("@mainboard", Helper.Truncate(device_identity.mainboard));
+                        cmd.Parameters.AddWithValue("@gpu", Helper.Truncate(device_identity.gpu));
+                        cmd.Parameters.AddWithValue("@ram", Helper.Truncate(device_identity.ram));
+                        cmd.Parameters.AddWithValue("@ram_usage", device_identity.ram_usage);
+                        cmd.Parameters.AddWithValue("@tpm", Helper.Truncate(device_identity.tpm));
+                        cmd.Parameters.AddWithValue("@environment_variables", device_identity.environment_variables);
+                        cmd.Parameters.AddWithValue("@last_active_user", Helper.Truncate(device_identity.last_active_user));
+
+                        cmd.ExecuteNonQuery();
+
+                        authentification_result = "unauthorized";
+                        device_exists = false;
+                        
+                        Logging.Handler.Debug("Modules.Authentification.Verify_Device", "New Device", "New device entry created.");
+                    }
                     
                     // Check if package has auto_authorize_until set and if it's still valid
                     bool shouldAutoAuthorize = await Check_Auto_Authorization(device_identity.package_guid);
@@ -547,7 +638,7 @@ namespace NetLock_RMM_Server.Agent.Windows
 
             public async Task InvokeAsync(HttpContext context)
             {
-                if (!await Helper.Get_Role_Status("Remote"))
+                if (!Configuration.Roles.Remote)
                 {
                     Logging.Handler.Debug("Agent.Windows.Authentification.InvokeAsync", "Trust role", "Trust role is not enabled.");
                     context.Response.StatusCode = 401; // Unauthorized

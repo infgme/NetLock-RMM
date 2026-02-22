@@ -1,7 +1,8 @@
 ﻿using System;
 using Avalonia;
-using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.IO;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
@@ -9,7 +10,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Threading;
+using Global.Encryption;
 using Global.Helper;
+using NetLock_RMM_Agent_Comm;
+using NetLock_RMM_Tray_Icon.Config;
 
 namespace NetLock_RMM_Tray_Icon
 {
@@ -19,8 +23,160 @@ namespace NetLock_RMM_Tray_Icon
         // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
         // yet and stuff might break.
         [STAThread]
-        public static void Main(string[] args) => BuildAvaloniaApp()
-            .StartWithClassicDesktopLifetime(args);
+        public static void Main(string[] args)
+        {
+            // Check if the process is already running for the current user
+            if (IsAlreadyRunningForCurrentUser())
+            {
+                Console.WriteLine("Process is already running for the current user. Exiting...");
+                return;
+            }
+            
+            // Check if tray icon is enabled in agent settings
+            if (!IsTrayIconEnabled())
+            {
+                Console.WriteLine("Tray icon is disabled in agent settings. Exiting...");
+                return;
+            }
+            
+            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        }
+
+        static bool IsTrayIconEnabled()
+        {
+            try
+            {
+                string configPath = Application_Paths.tray_icon_settings_json_path;
+                
+                if (!File.Exists(configPath))
+                {
+                    Console.WriteLine($"Config file not found at: {configPath}");
+                    // If config doesn't exist, don't start tray icon
+                    return false;
+                }
+                
+                string jsonString = File.ReadAllText(configPath);
+                
+                // Decrypt the config
+                jsonString = String_Encryption.Decrypt(jsonString, Application_Settings.NetLock_Local_Encryption_Key);
+                
+                var configRoot = JsonSerializer.Deserialize<Handler.ConfigRoot>(jsonString);
+                
+                if (configRoot?.TrayIcon?.Enabled == true)
+                {
+                    Console.WriteLine("Tray icon is enabled in settings.");
+                    return true;
+                }
+                else
+                {
+                    Console.WriteLine("Tray icon is disabled in settings (Enabled = false or null).");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error checking tray icon settings: {ex.Message}");
+                // If there's an error reading the config, don't start
+                return false;
+            }
+        }
+
+        static bool IsAlreadyRunningForCurrentUser()
+        {
+            try
+            {
+                string currentProcessName = Process.GetCurrentProcess().ProcessName;
+                string currentUsername = Environment.UserName;
+                int currentProcessId = Process.GetCurrentProcess().Id;
+
+                // Get all processes with the same name
+                Process[] processes = Process.GetProcessesByName(currentProcessName);
+
+                foreach (Process process in processes)
+                {
+                    // Skip the current process
+                    if (process.Id == currentProcessId)
+                        continue;
+
+                    try
+                    {
+                        // Try to get the username of the process owner
+                        string processUsername = GetProcessOwner(process.Id);
+                        
+                        if (!string.IsNullOrEmpty(processUsername) && 
+                            processUsername.Equals(currentUsername, StringComparison.OrdinalIgnoreCase))
+                        {
+                            Console.WriteLine($"Process is already running for user '{currentUsername}' (PID: {process.Id})");
+                            return true;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Could not check process {process.Id}: {ex.Message}");
+                    }
+                }
+                
+                Console.WriteLine("No existing process found for the current user.");
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error checking for existing process: {ex.Message}");
+                return false;
+            }
+        }
+
+        static string GetProcessOwner(int processId)
+        {
+            try
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    string query = $"SELECT * FROM Win32_Process WHERE ProcessId = {processId}";
+                    using (var searcher = new System.Management.ManagementObjectSearcher(query))
+                    {
+                        foreach (System.Management.ManagementObject obj in searcher.Get())
+                        {
+                            string[] argList = new string[] { string.Empty, string.Empty };
+                            int returnVal = Convert.ToInt32(obj.InvokeMethod("GetOwner", argList));
+                            if (returnVal == 0)
+                            {
+                                return argList[0]; // Username
+                            }
+                        }
+                    }
+                }
+                else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+                {
+                    // On Linux/macOS, use ps command to get process owner
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = "ps",
+                        Arguments = $"-o user= -p {processId}",
+                        RedirectStandardOutput = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+
+                    using (var process = Process.Start(psi))
+                    {
+                        if (process != null)
+                        {
+                            string output = process.StandardOutput.ReadToEnd().Trim();
+                            process.WaitForExit();
+                            return output;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting process owner for PID {processId}: {ex.Message}");
+            }
+
+            return string.Empty;
+        }
 
         // Avalonia configuration, don't remove; also used by visual designer.
         public static AppBuilder BuildAvaloniaApp()
@@ -357,18 +513,33 @@ namespace NetLock_RMM_Tray_Icon
 
                             string chatMessage = command.command;
                             
-                            // If chat window is open, display the message
-                            if (_chatWindow != null && _chatWindow.IsVisible)
+                            await Dispatcher.UIThread.InvokeAsync(() =>
                             {
-                                await Dispatcher.UIThread.InvokeAsync(() =>
+                                // If chat window is not open, open it first
+                                if (_chatWindow == null || !_chatWindow.IsVisible)
                                 {
-                                        var bubble = _chatWindow.CreateMessageBubble(command.command, _chatWindow.FirstName, _chatWindow.LastName, false);
-                                        _chatWindow.ChatMessagesPanel.Children.Add(bubble);
-                                        
-                                        // Scroll to bottom to show new message
-                                        _chatWindow.ChatScrollViewer.ScrollToEnd();
-                                });
-                            }       
+                                    _chatWindow = new ChatWindow();
+                                    // For now we'll use empty strings or extract from message if available
+                                    _chatWindow.ResponseId = command.response_id;
+                                    _chatWindow.Show();
+                                }
+                                else
+                                {
+                                    // Bring existing window to front
+                                    _chatWindow.WindowState = WindowState.Normal;
+                                    _chatWindow.Activate();
+                                    _chatWindow.Topmost = true;
+                                    _chatWindow.Topmost = false;
+                                    _chatWindow.Focus();
+                                }
+                                
+                                // Display the message
+                                var bubble = _chatWindow.CreateMessageBubble(command.command, _chatWindow.FirstName, _chatWindow.LastName, false);
+                                _chatWindow.ChatMessagesPanel.Children.Add(bubble);
+                                
+                                // Scroll to bottom to show new message
+                                _chatWindow.ChatScrollViewer.ScrollToEnd();
+                            });
                         }
                         catch (Exception ex)
                         {

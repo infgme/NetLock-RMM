@@ -38,17 +38,6 @@ public class Events_Notification_Service : BackgroundService
 
         try
         {
-            // Parallel processing of notifications
-            /*var tasks = new List<Task>
-            {
-                NetLock_RMM_Server.Events.Sender.Smtp("mail_status", "mail_notifications"),
-                NetLock_RMM_Server.Events.Sender.Smtp("ms_teams_status", "microsoft_teams_notifications"),
-                NetLock_RMM_Server.Events.Sender.Smtp("telegram_status", "telegram_notifications"),
-                NetLock_RMM_Server.Events.Sender.Smtp("ntfy_sh_status", "ntfy_sh_notifications")
-            };
-
-            await Task.WhenAll(tasks);*/
-
             await NetLock_RMM_Server.Events.Sender.Smtp("mail_status", "mail_notifications");
             await NetLock_RMM_Server.Events.Sender.Smtp("ms_teams_status", "microsoft_teams_notifications");
             await NetLock_RMM_Server.Events.Sender.Smtp("telegram_status", "telegram_notifications");

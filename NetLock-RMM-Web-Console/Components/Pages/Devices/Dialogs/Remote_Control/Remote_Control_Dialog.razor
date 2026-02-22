@@ -345,105 +345,159 @@
 
 <MudDialog>
     <TitleContent>
-        <MudText Typo="Typo.h5">Remote Control (@device_name)</MudText>
+        
+        @if (platform == "Windows")
+        {
+            <MudText Typo="Typo.h5">Remote Control (@device_name)</MudText>
+        }
+        @if (platform == "Linux" || platform == "MacOS")
+        {
+            <MudText Typo="Typo.h5">Remote Control (@device_name) (experimental)</MudText>
+        }
+        else if (platform == "Android")
+        {
+            <MudText Typo="Typo.h5">Remote Control (@device_name)</MudText>
+        }
+        else if (platform == "iOS")
+        {
+            <MudText Typo="Typo.h5">Remote Control (@device_name)</MudText>
+        }
+
     </TitleContent>
     <DialogContent>
 
-        <MudPaper>
+        <MudPaper Style="min-height: 80vh; min-width: 80vw; display: flex; flex-direction: column;">
             @{
                 if (remote_server_client_setup)
                 {
                     @if (!refresh_screen_timer_running)
                     {
-                        <MudButton Size="Size.Small" Color="Color.Default" FullWidth="true" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PlayArrow" @onclick="async () => { await Remote_Screen_Refresh_Timer_Setup(); }" Disabled="@(!remote_server_client_setup)">@Localizer["start_screen_sharing"]</MudButton>
+                        <MudButton Size="Size.Small" Color="Color.Default" FullWidth="true" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PlayArrow" @onclick="async () => { await Remote_Screen_Refresh_Timer_Setup(); }" Disabled="@(!remote_server_client_setup)">Start Screen Sharing</MudButton>
                     }
 
                     @if (!connected)
                     {
-                        <div class="fade-in">
-                            <MudProgressLinear Class="mt-2 mb-2 pulse-animation" Size="Size.Medium" Color="Color.Warning" Indeterminate="true">
-                                <MudText Typo="Typo.body1">The device is not connected to the NetLock RMM backend. Waiting for it to come back.</MudText>
-                            </MudProgressLinear>
+                        <div class="fade-in" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh;">
+                            <MudIcon Icon="@Icons.Material.Filled.WifiOff" Size="Size.Large" Color="Color.Warning" Style="font-size: 80px; margin-bottom: 24px;" />
+                            <MudText Typo="Typo.h5" Color="Color.Warning" Class="mb-4">Device Offline</MudText>
+                            <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4" Style="text-align: center;">
+                                The device is not connected to the NetLock RMM backend.<br/>Waiting for it to come back.
+                            </MudText>
+                            <MudProgressLinear Class="mt-4" Style="width: 300px;" Size="Size.Medium" Color="Color.Warning" Indeterminate="true" />
                         </div>
                     }
                     else if (waitingForRemoteProcess)
                     {
-                        <div class="fade-in">
-                            <MudProgressLinear Class="mt-2 mb-2 pulse-animation" Size="Size.Medium" Color="Color.Info" Indeterminate="true">
-                                <MudText Typo="Typo.body1">Device is online. Waiting for remote control process to start...</MudText>
-                            </MudProgressLinear>
-                            
-                            <MudButton Class="mt-2" StartIcon="@Icons.Material.Filled.People" Variant="Variant.Filled" Size="Size.Small" Color="Color.Info" FullWidth="true" OnClick="Remote_Get_Users">Retry</MudButton>
+                        <div class="fade-in" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh;">
+                            <MudIcon Icon="@Icons.Material.Filled.HourglassTop" Size="Size.Large" Color="Color.Info" Style="font-size: 80px; margin-bottom: 24px;" />
+                            <MudText Typo="Typo.h5" Color="Color.Info" Class="mb-4">Waiting for Remote Process</MudText>
+                            <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4" Style="text-align: center;">
+                                Device is online. Waiting for remote control process to start...
+                            </MudText>
+                            <MudProgressLinear Class="mt-4 mb-4" Style="width: 300px;" Size="Size.Medium" Color="Color.Info" Indeterminate="true" />
+                            <MudButton StartIcon="@Icons.Material.Filled.People" Variant="Variant.Filled" Size="Size.Medium" Color="Color.Info" OnClick="@Remote_Get_Users">Retry</MudButton>
                         </div>
                     }
                     else if (!users.Any())
                     {
-                        <div class="fade-in">
-                            <MudProgressLinear Class="mt-2 mb-2 pulse-animation" Size="Size.Medium" Color="Color.Info" Indeterminate="true">
-                                <MudText Typo="Typo.body1">Waiting for device.</MudText>
-                            </MudProgressLinear>
+                        <div class="fade-in" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh;">
+                            <MudIcon Icon="@Icons.Material.Filled.Devices" Size="Size.Large" Color="Color.Info" Style="font-size: 80px; margin-bottom: 24px;" />
+                            <MudText Typo="Typo.h5" Color="Color.Info" Class="mb-4">Connecting to Device</MudText>
+                            <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4" Style="text-align: center;">
+                                Waiting for device to respond...
+                            </MudText>
+                            <MudProgressLinear Class="mt-4" Style="width: 300px;" Size="Size.Medium" Color="Color.Info" Indeterminate="true" />
                         </div>
                     }
                     else if (String.IsNullOrEmpty(user))
                     {
-                        <div class="fade-in">
-                            <MudAlert Class="mt-2" Icon="@Icons.Material.Filled.PersonOff" Severity="Severity.Error">No user selected. Please select a user.</MudAlert>
+                        <div class="fade-in" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh;">
+                            <MudIcon Icon="@Icons.Material.Filled.PersonSearch" Size="Size.Large" Color="Color.Error" Style="font-size: 80px; margin-bottom: 24px;" />
+                            <MudText Typo="Typo.h5" Color="Color.Error" Class="mb-4">No User Selected</MudText>
+                            <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4" Style="text-align: center;">
+                                Please select a user session to connect to.
+                            </MudText>
 
-                            <MudSelect Class="ml-2 mt-2" T="string" @bind-Value="user" @bind-Value:after="Handle_User_Change" Label="@Localizer["user"]" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
-
-                                @{
-                                    foreach (string user in users)
-                                    {
-                                        <MudSelectItem T="string" Value="@user">@user</MudSelectItem>
+                            <MudPaper Elevation="2" Class="pa-4" Style="min-width: 300px;">
+                                <MudSelect T="string" @bind-Value="user" @bind-Value:after="Handle_User_Change" Label="@Localizer["user"]" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" FullWidth="true">
+                                    @{
+                                        foreach (string user in users)
+                                        {
+                                            <MudSelectItem T="string" Value="@user">@user</MudSelectItem>
+                                        }
                                     }
-                                }
-
-                            </MudSelect>
-                            
-                            <MudButton Class="mt-2" StartIcon="@Icons.Material.Filled.People" Variant="Variant.Filled" Size="Size.Small" Color="Color.Info" FullWidth="true" OnClick="Remote_Get_Users">Fetch user sessions</MudButton>
+                                </MudSelect>
+                                
+                                <MudButton Class="mt-3" StartIcon="@Icons.Material.Filled.People" Variant="Variant.Filled" Size="Size.Small" Color="Color.Info" FullWidth="true" OnClick="Remote_Get_Users">Fetch user sessions</MudButton>
+                            </MudPaper>
                         </div>
                     }
                     else if (connected && !rendered && !connectionAllowed)
                     {
-                        <div class="fade-in">
-                            <MudProgressLinear Size="Size.Medium" Class="mt-2 mb-2 pulse-animation" Color="Color.Info" Indeterminate="true">
-                                <MudText Typo="Typo.body1">Screen access not granted. Awaiting system or user approval.</MudText>
-                            </MudProgressLinear>
+                        <div class="fade-in" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh;">
+                            <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Large" Color="Color.Info" Style="font-size: 80px; margin-bottom: 24px;" />
+                            <MudText Typo="Typo.h5" Color="Color.Info" Class="mb-4">Awaiting Access Approval</MudText>
+                            <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4" Style="text-align: center;">
+                                Screen access not granted. Awaiting system or user approval.
+                            </MudText>
+                            <MudProgressLinear Class="mt-2 mb-4" Style="width: 300px;" Size="Size.Medium" Color="Color.Info" Indeterminate="true" />
                             
-                            <MudSelect Class="ml-2 mt-2" T="string" @bind-Value="user" @bind-Value:after="Handle_User_Change" Label="@Localizer["user"]" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
-
-                                @{
-                                    foreach (string user in users)
-                                    {
-                                        <MudSelectItem T="string" Value="@user">@user</MudSelectItem>
+                            <MudPaper Elevation="2" Class="pa-4" Style="min-width: 350px;">
+                                <MudSelect T="string" @bind-Value="user" @bind-Value:after="Handle_User_Change" Label="@Localizer["user"]" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" FullWidth="true">
+                                    @{
+                                        foreach (string user in users)
+                                        {
+                                            <MudSelectItem T="string" Value="@user">@user</MudSelectItem>
+                                        }
                                     }
-                                }
-
-                            </MudSelect>
-                            
-                            <MudButton Class="mt-2" StartIcon="@Icons.Material.Filled.People" Variant="Variant.Filled" Size="Size.Small" Color="Color.Info" FullWidth="true" OnClick="Remote_Get_Users">Fetch user sessions</MudButton>
-                            <MudButton Class="mt-2" StartIcon="@Icons.Material.Filled.Doorbell" Variant="Variant.Filled" Size="Size.Small" Color="Color.Info" FullWidth="true" OnClick="Remote_Request_Access">Request screen access from user (again)</MudButton>
+                                </MudSelect>
+                                
+                                <MudButton Class="mt-3" StartIcon="@Icons.Material.Filled.People" Variant="Variant.Filled" Size="Size.Small" Color="Color.Info" FullWidth="true" OnClick="Remote_Get_Users">Fetch user sessions</MudButton>
+                                <MudButton Class="mt-2" StartIcon="@Icons.Material.Filled.Doorbell" Variant="Variant.Filled" Size="Size.Small" Color="Color.Primary" FullWidth="true" OnClick="Remote_Request_Access">Request screen access again</MudButton>
+                            </MudPaper>
                         </div>
                     }
                     else if (connected && !rendered && connectionAllowed)
                     {
-                        <div class="fade-in">
-                            <MudProgressLinear Size="Size.Medium" Class="mt-2 mb-2 pulse-animation" Color="Color.Warning" Indeterminate="true">
-                                <MudText Typo="Typo.body1">No screen output from user. Attempting auto detect in the background. Please wait.</MudText>
-                        </MudProgressLinear>
+                        <div class="fade-in" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh;">
+                            <MudIcon Icon="@Icons.Material.Filled.ScreenSearchDesktop" Size="Size.Large" Color="Color.Warning" Style="font-size: 80px; margin-bottom: 24px;" />
+                            <MudText Typo="Typo.h5" Color="Color.Warning" Class="mb-4">Waiting for Screen Output</MudText>
+                            <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4" Style="text-align: center;">
+                                No screen output from user. Attempting auto detect in the background.
+                            </MudText>
+                            <MudProgressLinear Class="mt-2 mb-4" Style="width: 300px;" Size="Size.Medium" Color="Color.Warning" Indeterminate="true" />
                         
-                        <MudButton Class="mt-2" StartIcon="@Icons.Material.Filled.Refresh" Variant="Variant.Filled" Size="Size.Small" Color="Color.Default" FullWidth="true" OnClick="Remote_Get_Users">Fetch users</MudButton>
-
-                        <MudSelect Class="ml-2 mt-2" T="string" @bind-Value="user" @bind-Value:after="Remote_Get_Screen_Indexes" Label="@Localizer["user"]" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
-
-                            @{
-                                foreach (string user in users)
+                            <MudPaper Elevation="2" Class="pa-4" Style="min-width: 350px;">
+                                <MudSelect T="string" @bind-Value="user" @bind-Value:after="Remote_Get_Screen_Indexes" Label="@Localizer["user"]" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter" FullWidth="true">
+                                    @{
+                                        foreach (string user in users)
+                                        {
+                                            <MudSelectItem T="string" Value="@user">@user</MudSelectItem>
+                                        }
+                                    }
+                                </MudSelect>
+                                
+                                <MudButton Class="mt-3" StartIcon="@Icons.Material.Filled.Refresh" Variant="Variant.Filled" Size="Size.Small" Color="Color.Default" FullWidth="true" OnClick="Remote_Get_Users">Fetch users</MudButton>
+                            
+                                <!-- Screen selection controls -->
+                                @if (screens.Count() > 0)
                                 {
-                                    <MudSelectItem T="string" Value="@user">@user</MudSelectItem>
+                                    <MudDivider Class="my-3" />
+                                    <MudText Typo="Typo.body2" Class="mb-2">Available screens:</MudText>
+                                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                                        @foreach (int screen in screens)
+                                        {
+                                            var isActive = screen_index == screen.ToString();
+                                            <MudIconButton Icon="@Icons.Material.Filled.ScreenshotMonitor" 
+                                                           Size="Size.Small" 
+                                                           Variant="@(isActive ? Variant.Filled : Variant.Outlined)" 
+                                                           Color="@(isActive ? Color.Primary : Color.Info)" 
+                                                           OnClick="() => { screen_index = screen.ToString(); Remote_Refresh_Screen(); }" 
+                                                           Title="@($"Screen {screen}" + (isActive ? " (Active)" : ""))" />
+                                        }
+                                    </div>
                                 }
-                            }
-
-                        </MudSelect>
+                            </MudPaper>
                         </div>
                     }
                     else
@@ -466,11 +520,12 @@
                             </MudSelect>
 
                             <MudSelect Class="ml-2 mt-2" T="int" @bind-Value="remote_screen_refresh_ms" @bind-Value:after="Remote_Screen_Refresh_Timer_Restart" Label="Refresh rate" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.TopCenter">
-                                <MudSelectItem T="int" Value="100">Very fast</MudSelectItem>
-                                <MudSelectItem T="int" Value="200">Fast</MudSelectItem>
-                                <MudSelectItem T="int" Value="400">Moderate</MudSelectItem>
-                                <MudSelectItem T="int" Value="600">Slow</MudSelectItem>
-                                <MudSelectItem T="int" Value="1000">Very slow</MudSelectItem>
+                                <MudSelectItem T="int" Value="66">Experimental (15 FPS)</MudSelectItem>
+                                <MudSelectItem T="int" Value="100">Very fast (10 FPS)</MudSelectItem>
+                                <MudSelectItem T="int" Value="200">Fast (5 FPS)</MudSelectItem>
+                                <MudSelectItem T="int" Value="350">Moderate (3 FPS)</MudSelectItem>
+                                <MudSelectItem T="int" Value="500">Slow (2 FPS)</MudSelectItem>
+                                <MudSelectItem T="int" Value="1000">Very slow (1 FPS)</MudSelectItem>
                             </MudSelect>
 
                             <MudSelect T="double" Label="Zoom" @bind-Value="zoomLevel" Class="ml-2 mt-2">
@@ -485,7 +540,14 @@
                                 {
                                     foreach (int screen in screens)
                                     {
-                                        <MudIconButton Class="ml-2 mt-2" Icon="@Icons.Material.Filled.ScreenshotMonitor" Size="Size.Small" Variant="Variant.Filled" Color="Color.Info" OnClick="() => { screen_index = screen.ToString(); Remote_Refresh_Screen(); }" Title="@(screen)" />
+                                        var isActive = screen_index == screen.ToString();
+                                        <MudIconButton Class="ml-2 mt-2" 
+                                                       Icon="@Icons.Material.Filled.ScreenshotMonitor" 
+                                                       Size="Size.Small" 
+                                                       Variant="@(isActive ? Variant.Filled : Variant.Outlined)" 
+                                                       Color="@(isActive ? Color.Primary : Color.Info)" 
+                                                       OnClick="() => { screen_index = screen.ToString(); Remote_Refresh_Screen(); }" 
+                                                       Title="@($"Screen {screen}" + (isActive ? " (Active)" : ""))" />
                                     }
                                 }
                             }
@@ -495,7 +557,11 @@
                             <MudTooltip Text="Fetch user sessions">
                                 <MudIconButton Class="ml-2 mt-2" Icon="@Icons.Material.Filled.People" Variant="Variant.Filled" Size="Size.Medium" Color="Color.Default" OnClick="Remote_Get_Users"></MudIconButton>
                             </MudTooltip>
-
+                            
+                            <MudTooltip Text="Fetch screens">
+                                <MudIconButton Class="ml-2 mt-2" Icon="@Icons.Material.Filled.DesktopWindows" Variant="Variant.Filled" Size="Size.Medium" Color="Color.Default" OnClick="Remote_Get_Screen_Indexes"></MudIconButton>
+                            </MudTooltip>
+                            
                             <MudTooltip Text="Send Ctrl + Alt + Delete">
                                 <MudIconButton Class="ml-2 mt-2" Icon="@Icons.Material.Filled.LockOpen" Variant="Variant.Filled" Size="Size.Medium" Color="Color.Default" @onclick="@(() => Remote_Keyboard_Input("ctrlaltdel", false))"></MudIconButton>
                             </MudTooltip>
@@ -504,52 +570,56 @@
 
                             <MudPopover Open="@_remoteSendKeysPopoverisOpen" AnchorOrigin="Origin.BottomCenter" TransformOrigin="Origin.CenterCenter">
                                 <MudPaper Class="pa-4">
-                                    <MudTextField T="string" Label="Enter text to send" @bind-Value="_remoteSendKeysInput" OnKeyDown="RemoteSendKeysHandleKeyDown" Immediate="true" />
+                                    <MudTextField T="string" 
+                                                  Label="Enter text to send" 
+                                                  @bind-Value="_remoteSendKeysInput" 
+                                                  OnKeyDown="RemoteSendKeysHandleKeyDown" 
+                                                  Immediate="true"
+                                                  InputType="@(_remoteSendKeysInputVisible ? InputType.Text : InputType.Password)"
+                                                  Adornment="Adornment.End"
+                                                  AdornmentIcon="@(_remoteSendKeysInputVisible ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                                                  OnAdornmentClick="@(() => _remoteSendKeysInputVisible = !_remoteSendKeysInputVisible)"
+                                                  AdornmentAriaLabel="Toggle visibility" />
                                     <MudButton Class="mt-2" Variant="Variant.Filled" Size="Size.Small" FullWidth="true" OnClick="@RemoteSendKeys">Send</MudButton>
                                 </MudPaper>
                             </MudPopover>
                             
                             <MudTooltip Text="Open Chat">
-                                <MudIconButton Class="ml-2 mt-2" Icon="@Icons.Material.Filled.Chat" Variant="Variant.Filled" Size="Size.Medium" Color="Color.Default" OnClick="ToggleChat"></MudIconButton>
+                                <MudIconButton Class="mt-2" Icon="@Icons.Material.Filled.Chat" Variant="Variant.Filled" Size="Size.Medium" Color="Color.Default" OnClick="ToggleChat"></MudIconButton>
+                            </MudTooltip>
+
+                            <MudTooltip Text="Virtual Display Management">
+                                <MudIconButton Class="ml-2 mt-2" Icon="@Icons.Material.Filled.DisplaySettings" Variant="Variant.Filled" Size="Size.Medium" Color="Color.Default" OnClick="ToggleVirtualDisplayMenu"></MudIconButton>
                             </MudTooltip>
 
                             @if (permissions_devices_remote_shell)
                             {
                                 <MudTooltip Text="Open remote shell">
-                                    <MudIconButton Class="ml-2 mt-2" Icon="@Icons.Material.Filled.Terminal" Variant="Variant.Filled" Size="Size.Medium" Color="Color.Default" OnClick="Remote_Shell_Dialog"></MudIconButton>
+                                    <MudIconButton Class="ml-2 mt-2" Icon="@Icons.Material.Filled.Terminal" Variant="Variant.Filled" Size="Size.Medium" Color="Color.Default" OnClick="@Remote_Shell_Dialog"></MudIconButton>
                                 </MudTooltip>
                             }
 
                             @if (permissions_devices_remote_file_browser)
                             {
                                 <MudTooltip Text="Open remote file browser">
-                                    <MudIconButton Class="ml-2 mt-2" Icon="@Icons.Material.Filled.FolderOpen" Variant="Variant.Filled" Size="Size.Medium" Color="Color.Default" OnClick="Remote_File_Browser_Dialog"></MudIconButton>
+                                    <MudIconButton Class="ml-2 mt-2" Icon="@Icons.Material.Filled.FolderOpen" Variant="Variant.Filled" Size="Size.Medium" Color="Color.Default" OnClick="@Remote_File_Browser_Dialog"></MudIconButton>
                                 </MudTooltip>
                             }
 
-                            @if (Configuration.Members_Portal.IsCodeSigned)
+                            @if (!recordSessionForce)
                             {
-                                @if (!recordSessionForce)
+                                @if (!recordSession)
                                 {
-                                    @if (!recordSession)
-                                    {
-                                        <MudTooltip Text="Start recording">
-                                            <MudIconButton Class="ml-2 mt-2" Icon="@Icons.Material.Filled.PlayCircle" Variant="Variant.Filled" Size="Size.Medium" Color="Color.Default" OnClick="StartRecordingSession"></MudIconButton>
-                                        </MudTooltip>
-                                    }
-                                    else
-                                    {
-                                        <MudTooltip Text="Stop recording">
-                                            <MudIconButton Class="ml-2 mt-2" Icon="@Icons.Material.Filled.StopCircle" Variant="Variant.Filled" Size="Size.Medium" Color="Color.Default" OnClick="StopRecordingSession"></MudIconButton>
-                                        </MudTooltip>
-                                    }
+                                    <MudTooltip Text="Start recording">
+                                        <MudIconButton Class="ml-2 mt-2" Icon="@Icons.Material.Filled.PlayCircle" Variant="Variant.Filled" Size="Size.Medium" Color="Color.Default" OnClick="StartRecordingSession"></MudIconButton>
+                                    </MudTooltip>
                                 }
-                            }
-                            else
-                            {
-                                <MudTooltip Text="Start recording (only for Pro users)">
-                                    <MudIconButton Class="ml-2 mt-2" Icon="@Icons.Material.Filled.PlayCircle" Variant="Variant.Filled" Size="Size.Medium" Color="Color.Default" Disabled="true" OnClick="StartRecordingSession"></MudIconButton>
-                                </MudTooltip>
+                                else
+                                {
+                                    <MudTooltip Text="Stop recording">
+                                        <MudIconButton Class="ml-2 mt-2" Icon="@Icons.Material.Filled.StopCircle" Variant="Variant.Filled" Size="Size.Medium" Color="Color.Default" OnClick="StopRecordingSession"></MudIconButton>
+                                    </MudTooltip>
+                                }
                             }
 
                             @if (isMobile)
@@ -558,7 +628,11 @@
                                     <MudIconButton Class="ml-2 mt-2" Icon="@Icons.Material.Filled.Keyboard" Variant="Variant.Filled" Size="Size.Medium" Color="Color.Default" OnClick="ToggleMobileKeyboard"></MudIconButton>
                                 </MudTooltip>
                             }
-
+                            
+                            <MudTooltip Text="Download Screenshot">
+                                <MudIconButton Class="ml-2 mt-2" Icon="@Icons.Material.Filled.CameraAlt" Variant="Variant.Filled" Size="Size.Medium" Color="Color.Default" OnClick="DownloadScreenshot"></MudIconButton>
+                            </MudTooltip>
+                            
                             <MudTooltip Text="Toggle fullscreen">
                                 <MudIconButton Class="ml-2 mt-2" Icon="@Icons.Material.Filled.Fullscreen" Variant="Variant.Filled" Size="Size.Medium" Color="Color.Default" OnClick="ToggleFullScreen"></MudIconButton>
                             </MudTooltip>
@@ -571,7 +645,19 @@
                              tabindex="0"
                              @onkeydown="HandleKeyDown"
                              @onblur="HandleBlur"
-                             @onfocus="HandleFocus">
+                             @onfocus="HandleFocus"
+                             style="position: relative;">
+
+                            <!-- Screen indicator overlay -->
+                            @if (screens.Count() > 0)
+                            {
+                                <div style="position: absolute; top: 16px; left: 16px; z-index: 1000; background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(10px); padding: 8px 16px; border-radius: 8px; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);">
+                                    <MudIcon Icon="@Icons.Material.Filled.Monitor" Size="Size.Small" Color="Color.Info" />
+                                    <MudText Typo="Typo.body2" Style="color: white; font-weight: 500; margin: 0;">
+                                        Screen @(screen_index) @(screens.Count() > 1 ? $"/ {screens.Count() - 1}" : "")
+                                    </MudText>
+                                </div>
+                            }
 
                             <img alt="Bild"
                                  draggable="false"
@@ -588,123 +674,380 @@
                 }
                 else
                 {
-                    <MudAlert Class="mb-2" Severity="Severity.Error" Icon="@Icons.Material.Filled.Error">Not connected to the NetLock RMM server backend.</MudAlert>
-
-                    <MudButton Class="mb-2" Size="Size.Small" Color="Color.Default" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.ConnectWithoutContact" FullWidth="true" OnClick="Reconnect">@Localizer["connect"]</MudButton>
-                }
-            }
-
-           <MudDrawer Class="pa-4" Anchor="Anchor.Right" Open="@_chatOpen" Elevation="8" Width="650px" ClipMode="DrawerClipMode.Docked" Variant="DrawerVariant.Temporary" Overlay="false">
-
-    <!-- Header mit Titel und Schließen-Button -->
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
-        <MudText Typo="Typo.h6" Style="font-weight: 600;">Chat</MudText>
-        <MudIconButton Icon="@Icons.Material.Filled.Close"
-                       Color="Color.Default"
-                       Size="Size.Small"
-                       OnClick="ToggleChat"
-                       Title="Close chat" />
-    </div>
-
-    <MudDivider Class="mb-3"/>
-
-    <!-- Aktionsleiste kompakt -->
-    <MudPaper Elevation="0" Class="pa-2 mb-3">
-        <div style="display: flex; gap: 6px; justify-content: center; align-items: center;">
-            <MudTooltip Text="Open chat window for user">
-                <MudIconButton Icon="@Icons.Material.Filled.Visibility"
-                               Color="Color.Default"
-                               Size="Size.Small"
-                               Variant="Variant.Text"
-                               OnClick="TrayIconShowChat" />
-            </MudTooltip>
-
-            <MudTooltip Text="Play sound on user device">
-                <MudIconButton Icon="@Icons.Material.Filled.VolumeUp"
-                               Color="Color.Default"
-                               Size="Size.Small"
-                               Variant="Variant.Text"
-                               OnClick="TrayIconPlaySound" />
-            </MudTooltip>
-
-            <MudTooltip Text="Exit chat window on user device">
-                <MudIconButton Icon="@Icons.Material.Filled.ExitToApp"
-                               Color="Color.Default"
-                               Size="Size.Small"
-                               Variant="Variant.Text"
-                               OnClick="TrayIconExitChat" />
-            </MudTooltip>
-            
-            <MudTooltip Text="Download chat transcript">
-                <MudIconButton Icon="@Icons.Material.Filled.Print"
-                               Color="Color.Default"
-                               Size="Size.Small"
-                               Variant="Variant.Text"
-                               OnClick="ExportChatTranscript" />
-            </MudTooltip>
-
-        </div>
-    </MudPaper>
-
-    <!-- MudChat Component -->
-    <div @ref="_chatScrollContainer" class="chat-container">
-        @{
-            DateTime? lastDate = null;
-            foreach (var msg in chatMessages)
-            {
-                // Datum-Header anzeigen wenn ein neuer Tag beginnt
-                if (lastDate == null || msg.Time.Date != lastDate.Value.Date)
-                {
-                    <div class="date-divider">
-                        <MudText Typo="Typo.caption" Class="date-badge">
-                            @(msg.Time.Date == DateTime.Today ? "Heute" : msg.Time.ToString("dd. MMMM yyyy"))
+                    <div class="fade-in" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh;">
+                        <MudIcon Icon="@Icons.Material.Filled.CloudOff" Size="Size.Large" Color="Color.Error" Style="font-size: 80px; margin-bottom: 24px;" />
+                        <MudText Typo="Typo.h5" Color="Color.Error" Class="mb-4">Not Connected</MudText>
+                        <MudText Typo="Typo.body1" Color="Color.Secondary" Class="mb-4" Style="text-align: center;">
+                            Not connected to the NetLock RMM server backend.
                         </MudText>
+                        <MudButton Size="Size.Medium" Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.ConnectWithoutContact" OnClick="Reconnect">@Localizer["connect"]</MudButton>
                     </div>
-                    lastDate = msg.Time.Date;
                 }
-            
-                <div class="message-container @(msg.IsOwn ? "own-message" : "other-message")">
-                    @if (!msg.IsOwn)
-                    {
-                        <div class="avatar-placeholder">
-                            <MudAvatar Color="Color.Primary" Size="Size.Small">@(msg.Sender?.Length > 0 ? msg.Sender[0] : '?')</MudAvatar>
-                        </div>
-                    }
-                
-                    <div class="message-content @(msg.IsOwn ? "own-content" : "other-content")">
-                        <div class="message-header">
-                            <MudText Typo="Typo.caption" Class="sender-name">@msg.Sender</MudText>
-                            <MudText Typo="Typo.caption" Class="message-time">@msg.Time.ToString("HH:mm")</MudText>
-                        </div>
-                        <MudPaper Elevation="0" Class="message-bubble">
-                            <MudText Typo="Typo.body2">@msg.Text</MudText>
-                        </MudPaper>
-                    </div>
-                </div>
             }
-        }
-    </div>
+
+            @if (_chatOpen)
+            {
+            <MudDrawer Class="pa-4" Anchor="Anchor.Right" Open="@_chatOpen" Elevation="8" Width="650px" ClipMode="DrawerClipMode.Docked" Variant="DrawerVariant.Temporary" Overlay="false">
+
+                <!-- Header mit Titel und Schließen-Button -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+                    <MudText Typo="Typo.h6" Style="font-weight: 600;">Chat</MudText>
+                    <MudIconButton Icon="@Icons.Material.Filled.Close"
+                                   Color="Color.Default"
+                                   Size="Size.Small"
+                                   OnClick="ToggleChat"
+                                   Title="Close chat" />
+                </div>
+
+                <MudDivider Class="mb-3"/>
+
+                <!-- Aktionsleiste kompakt -->
+                <MudPaper Elevation="0" Class="pa-2 mb-3">
+                    <div style="display: flex; gap: 6px; justify-content: center; align-items: center;">
+                        <MudTooltip Text="Open chat window for user">
+                            <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                           Color="Color.Default"
+                                           Size="Size.Small"
+                                           Variant="Variant.Text"
+                                           OnClick="TrayIconShowChat" />
+                        </MudTooltip>
+
+                        <MudTooltip Text="Play sound on user device">
+                            <MudIconButton Icon="@Icons.Material.Filled.VolumeUp"
+                                           Color="Color.Default"
+                                           Size="Size.Small"
+                                           Variant="Variant.Text"
+                                           OnClick="TrayIconPlaySound" />
+                        </MudTooltip>
+
+                        <MudTooltip Text="Exit chat window on user device">
+                            <MudIconButton Icon="@Icons.Material.Filled.ExitToApp"
+                                           Color="Color.Default"
+                                           Size="Size.Small"
+                                           Variant="Variant.Text"
+                                           OnClick="TrayIconExitChat" />
+                        </MudTooltip>
+                        
+                        <MudTooltip Text="Download chat transcript">
+                            <MudIconButton Icon="@Icons.Material.Filled.Print"
+                                           Color="Color.Default"
+                                           Size="Size.Small"
+                                           Variant="Variant.Text"
+                                           OnClick="ExportChatTranscript" />
+                        </MudTooltip>
+
+                    </div>
+                </MudPaper>
+
+                <!-- MudChat Component -->
+                <div @ref="_chatScrollContainer" class="chat-container">
+                    @{
+                        DateTime? lastDate = null;
+                        foreach (var msg in chatMessages)
+                        {
+                            // Show date header when a new day begins
+                            if (lastDate == null || msg.Time.Date != lastDate.Value.Date)
+                            {
+                                <div class="date-divider">
+                                    <MudText Typo="Typo.caption" Class="date-badge">
+                                        @(msg.Time.Date == DateTime.Today ? "Heute" : msg.Time.ToString("dd. MMMM yyyy"))
+                                    </MudText>
+                                </div>
+                                lastDate = msg.Time.Date;
+                            }
+                        
+                            <div class="message-container @(msg.IsOwn ? "own-message" : "other-message")">
+                                @if (!msg.IsOwn)
+                                {
+                                    <div class="avatar-placeholder">
+                                        <MudAvatar Color="Color.Primary" Size="Size.Small">@(msg.Sender?.Length > 0 ? msg.Sender[0] : '?')</MudAvatar>
+                                    </div>
+                                }
+                            
+                                <div class="message-content @(msg.IsOwn ? "own-content" : "other-content")">
+                                    <div class="message-header">
+                                        <MudText Typo="Typo.caption" Class="sender-name">@msg.Sender</MudText>
+                                        <MudText Typo="Typo.caption" Class="message-time">@msg.Time.ToString("HH:mm")</MudText>
+                                    </div>
+                                    <MudPaper Elevation="0" Class="message-bubble">
+                                        <MudText Typo="Typo.body2">@msg.Text</MudText>
+                                    </MudPaper>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+                
+                <!-- Eingabefeld -->
+                <MudTextField T="string"
+                              Placeholder="Type a message..."
+                              Class="mt-3"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Adornment="Adornment.End"
+                              AdornmentIcon="@Icons.Material.Filled.Send"
+                              AdornmentColor="Color.Primary"
+                              @bind-Value="_trayIconChatMessageInput"
+                              OnKeyDown="TrayIconChatMessageInputKeyDown"
+                              OnAdornmentClick="TrayIconSendChatMessage"
+                              Immediate="true"/>
+
+            </MudDrawer>
+            }
+
+            <!-- Virtual Display Management Drawer -->
+            @if (_virtualDisplayMenuOpen)
+            {
+                           <MudDrawer Class="pa-4" Anchor="Anchor.Right" Open="@_virtualDisplayMenuOpen" Elevation="8" Width="750px" ClipMode="DrawerClipMode.Docked" Variant="DrawerVariant.Temporary" Overlay="false" Style="overflow-y: auto;">
+               
+               <!-- Header -->
+               <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+                   <MudText Typo="Typo.h6" Style="font-weight: 600;">Virtual Display Management</MudText>
+                   <MudIconButton Icon="@Icons.Material.Filled.Close"
+                                  Color="Color.Default"
+                                  Size="Size.Small"
+                                  OnClick="ToggleVirtualDisplayMenu"
+                                  Title="Close menu" />
+               </div>
+
+               <MudDivider Class="mb-3"/>
+
+               <!-- Driver Management Section -->
+               <MudPaper Elevation="2" Class="pa-4 mb-3">
+                   <MudText Typo="Typo.h6" Class="mb-2">
+                       <MudIcon Icon="@Icons.Material.Filled.Build" Size="Size.Small" Class="mr-2"/>
+                       Driver Management
+                   </MudText>
+                   
+                   <MudText Typo="Typo.body2" Class="mb-3" Color="Color.Secondary">
+                       Install or uninstall the virtual display driver (Windows only)
+                   </MudText>
+                   
+                   <!-- Driver Status Indicator -->
+                   @if (_vdDriverStatusChecking)
+                   {
+                       <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+                           <div style="display: flex; align-items: center; gap: 8px;">
+                               <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                               <MudText Typo="Typo.body2">Checking driver status...</MudText>
+                           </div>
+                       </MudAlert>
+                   }
+                   else
+                   {
+                       <MudAlert Severity="@(_vdDriverInstalled ? Severity.Success : Severity.Warning)" Dense="true" Class="mb-3">
+                           <MudText Typo="Typo.body2">
+                               <strong>Driver Status:</strong> @(_vdDriverInstalled ? "Installed" : "Not Installed")
+                           </MudText>
+                       </MudAlert>
+                   }
+                   
+                   <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                       @if (!_vdDriverInstalled)
+                       {
+                           <MudButton StartIcon="@(_vdDriverActionInProgress ? null : Icons.Material.Filled.Download)" 
+                                      Variant="Variant.Filled" 
+                                      Color="Color.Success" 
+                                      Size="Size.Small"
+                                      Disabled="@(_vdDriverActionInProgress || _vdDriverStatusChecking)"
+                                      OnClick="VirtualDisplay_InstallDriver">
+                               @if (_vdDriverActionInProgress)
+                               {
+                                   <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                   <span>Installing...</span>
+                               }
+                               else
+                               {
+                                   <span>Install Driver</span>
+                               }
+                           </MudButton>
+                       }
+                       else
+                       {
+                           <MudButton StartIcon="@(_vdDriverActionInProgress ? null : Icons.Material.Filled.Delete)" 
+                                      Variant="Variant.Filled" 
+                                      Color="Color.Error" 
+                                      Size="Size.Small"
+                                      Disabled="@(_vdDriverActionInProgress || _vdDriverStatusChecking)"
+                                      OnClick="VirtualDisplay_UninstallDriver">
+                               @if (_vdDriverActionInProgress)
+                               {
+                                   <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                   <span>Uninstalling...</span>
+                               }
+                               else
+                               {
+                                   <span>Uninstall Driver</span>
+                               }
+                           </MudButton>
+                       }
+                       <MudButton StartIcon="@Icons.Material.Filled.Refresh" 
+                                  Variant="Variant.Filled" 
+                                  Color="Color.Default" 
+                                  Size="Size.Small"
+                                  Disabled="@(_vdDriverStatusChecking)"
+                                  OnClick="VirtualDisplay_CheckDriverStatus">
+                           Check Status
+                       </MudButton>
+                   </div>
+               </MudPaper>
+
+               <!-- Monitor Configuration Section -->
+               <MudPaper Elevation="2" Class="pa-4 mb-3">
+                   <MudText Typo="Typo.h6" Class="mb-2">
+                       <MudIcon Icon="@Icons.Material.Filled.Monitor" Size="Size.Small" Class="mr-2"/>
+                       Monitor Settings
+                   </MudText>
+                   
+                   <MudNumericField @bind-Value="_vdMonitorCount" Label="Number of Virtual Monitors" Min="1" Max="4" Step="1" Variant="Variant.Outlined" Margin="Margin.Dense" FullWidth="true"/>
+                   
+                   @if (screens.Count() > 0)
+                   {
+                       <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3">
+                           <MudText Typo="Typo.body2">
+                               <strong>Available displays:</strong> @screens.Count() (Index 0 - @_vdMaxDisplayIndex)
+                           </MudText>
+                       </MudAlert>
+                   }
+               </MudPaper>
+
+               <!-- Global Refresh Rates Section -->
+               <MudPaper Elevation="2" Class="pa-4 mb-3">
+                   <MudText Typo="Typo.h6" Class="mb-2">
+                       <MudIcon Icon="@Icons.Material.Filled.Speed" Size="Size.Small" Class="mr-2"/>
+                       Global Refresh Rates
+                   </MudText>
+                   <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">
+                       These refresh rates will be available for all resolutions
+                   </MudText>
+                   
+                   <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;">
+                       @foreach (var rate in _vdGlobalRefreshRates)
+                       {
+                           <MudChip T="int" Color="Color.Primary" OnClose="() => RemoveGlobalRefreshRate(rate)" Size="Size.Small">@rate Hz</MudChip>
+                       }
+                   </div>
+                   
+                   <div style="display: flex; align-items: center;">
+                       <MudNumericField @bind-Value="_vdNewRefreshRate" Label="Add Refresh Rate (Hz)" Min="30" Max="360" Step="1" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex: 1;"/>
+                       <MudButton Class="ml-2" StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Filled" Color="Color.Primary" OnClick="AddGlobalRefreshRate" Size="Size.Small">Add</MudButton>
+                   </div>
+               </MudPaper>
+
+               <!-- Resolutions Section -->
+               <MudPaper Elevation="2" Class="pa-4 mb-3">
+                   <MudText Typo="Typo.h6" Class="mb-2">
+                       <MudIcon Icon="@Icons.Material.Filled.AspectRatio" Size="Size.Small" Class="mr-2"/>
+                       Resolutions
+                   </MudText>
+                   
+                   <MudSimpleTable Dense="true" Hover="true" Class="mb-3" Style="max-height: 200px; overflow-y: auto;">
+                       <thead>
+                           <tr>
+                               <th>Width</th>
+                               <th>Height</th>
+                               <th>Refresh Rate</th>
+                               <th>Actions</th>
+                           </tr>
+                       </thead>
+                       <tbody>
+                           @foreach (var res in _vdResolutions)
+                           {
+                               <tr>
+                                   <td>@res.Width</td>
+                                   <td>@res.Height</td>
+                                   <td>@res.RefreshRate Hz</td>
+                                   <td>
+                                       <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => RemoveResolution(res)" />
+                                   </td>
+                               </tr>
+                           }
+                       </tbody>
+                   </MudSimpleTable>
+                   
+                   <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">Add new resolution:</MudText>
+                   <div style="display: flex; align-items: center;">
+                       <MudNumericField @bind-Value="_vdNewResWidth" Label="Width" Min="640" Max="7680" Step="1" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex: 1;"/>
+                       <MudNumericField Class="ml-2" @bind-Value="_vdNewResHeight" Label="Height" Min="480" Max="4320" Step="1" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex: 1;"/>
+                       <MudNumericField Class="ml-2" @bind-Value="_vdNewResRefreshRate" Label="Hz" Min="30" Max="360" Step="1" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex: 0.5;"/>
+                       <MudButton Class="ml-2" StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Filled" Color="Color.Primary" OnClick="AddResolution" Size="Size.Small">Add</MudButton>
+                   </div>
+                   
+                   <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-3 mb-2">Quick presets:</MudText>
+                   <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                       <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => AddResolutionPreset(800, 600, 30))">800x600</MudButton>
+                       <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => AddResolutionPreset(1366, 768, 30))">1366x768</MudButton>
+                       <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => AddResolutionPreset(1920, 1080, 30))">1920x1080</MudButton>
+                       <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => AddResolutionPreset(2560, 1440, 30))">2560x1440</MudButton>
+                       <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => AddResolutionPreset(3840, 2160, 30))">3840x2160</MudButton>
+                   </div>
+               </MudPaper>
+
+               <!-- Colour Settings Section -->
+               <MudPaper Elevation="2" Class="pa-4 mb-3">
+                   <MudText Typo="Typo.h6" Class="mb-2">
+                       <MudIcon Icon="@Icons.Material.Filled.Palette" Size="Size.Small" Class="mr-2"/>
+                       Colour Settings
+                   </MudText>
+                   
+                   <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                       <MudCheckBox @bind-Value="_vdSDR10bit" Label="SDR 10-bit" Color="Color.Primary" Dense="true"/>
+                       <MudCheckBox @bind-Value="_vdHDRPlus" Label="HDR Plus" Color="Color.Primary" Dense="true" Disabled="@_vdSDR10bit"/>
+                       <MudSelect @bind-Value="_vdColourFormat" Label="Colour Format" Variant="Variant.Outlined" Margin="Margin.Dense">
+                           <MudSelectItem Value="@("RGB")">RGB</MudSelectItem>
+                           <MudSelectItem Value="@("YCbCr444")">YCbCr444</MudSelectItem>
+                           <MudSelectItem Value="@("YCbCr422")">YCbCr422</MudSelectItem>
+                           <MudSelectItem Value="@("YCbCr420")">YCbCr420</MudSelectItem>
+                       </MudSelect>
+                   </div>
+                   
+                   @if (_vdSDR10bit && _vdHDRPlus)
+                   {
+                       <MudAlert Severity="Severity.Warning" Dense="true">
+                           SDR 10-bit and HDR Plus cannot be used together. HDR Plus will be disabled.
+                       </MudAlert>
+                   }
+               </MudPaper>
+
+               <!-- Cursor Settings Section -->
+               <MudPaper Elevation="2" Class="pa-4 mb-3">
+                   <MudText Typo="Typo.h6" Class="mb-2">
+                       <MudIcon Icon="@Icons.Material.Filled.Mouse" Size="Size.Small" Class="mr-2"/>
+                       Cursor Settings
+                   </MudText>
+                   
+                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                       <MudCheckBox @bind-Value="_vdHardwareCursor" Label="Hardware Cursor" Color="Color.Primary" Dense="true"/>
+                       <MudCheckBox @bind-Value="_vdAlphaCursorSupport" Label="Alpha Cursor Support" Color="Color.Primary" Dense="true"/>
+                   </div>
+                   
+                   <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+                       <MudNumericField @bind-Value="_vdCursorMaxX" Label="Cursor Max X" Min="32" Max="256" Step="1" Variant="Variant.Outlined" Margin="Margin.Dense"/>
+                       <MudNumericField @bind-Value="_vdCursorMaxY" Label="Cursor Max Y" Min="32" Max="256" Step="1" Variant="Variant.Outlined" Margin="Margin.Dense"/>
+                       <MudSelect @bind-Value="_vdXorCursorSupportLevel" Label="XOR Cursor Support" Variant="Variant.Outlined" Margin="Margin.Dense">
+                           <MudSelectItem Value="0">Uninitialized (0)</MudSelectItem>
+                           <MudSelectItem Value="1">None (1)</MudSelectItem>
+                           <MudSelectItem Value="2">Full (2)</MudSelectItem>
+                           <MudSelectItem Value="3">Emulation (3)</MudSelectItem>
+                       </MudSelect>
+                   </div>
+               </MudPaper>
+
+               <!-- Apply Configuration Section -->
+               <MudButton Class="mb-5"
+                          StartIcon="@Icons.Material.Filled.Send" 
+                          Variant="Variant.Filled" 
+                          Color="Color.Primary" 
+                          FullWidth="true"
+                          Size="Size.Small"
+                          OnClick="VirtualDisplay_ApplyConfiguration">
+                   Apply Configuration
+               </MudButton>
+
+           </MudDrawer>
+            }
 
 
-
-
-    <!-- Eingabefeld -->
-    <MudTextField T="string"
-                  Placeholder="Type a message..."
-                  Class="mt-3"
-                  Variant="Variant.Outlined"
-                  Margin="Margin.Dense"
-                  Adornment="Adornment.End"
-                  AdornmentIcon="@Icons.Material.Filled.Send"
-                  AdornmentColor="Color.Primary"
-                  @bind-Value="_trayIconChatMessageInput"
-                  OnKeyDown="TrayIconChatMessageInputKeyDown"
-                  OnAdornmentClick="TrayIconSendChatMessage"
-                  Immediate="true"/>
-
-</MudDrawer>
-
-            
         </MudPaper>
 
     </DialogContent>
@@ -767,6 +1110,8 @@
     [Parameter] public string device_name { get; set; }
     [Parameter] public string tenant_guid { get; set; }
     [Parameter] public string location_guid { get; set; }
+    [Parameter] public string access_key { get; set; }
+    [Parameter] public string platform { get; set; }
 
     private bool loading_overlay = false;
     private bool error_occurred = false;
@@ -778,6 +1123,7 @@
 
     private bool _remoteSendKeysPopoverisOpen;
     private string _remoteSendKeysInput = String.Empty;
+    private bool _remoteSendKeysInputVisible = false;
 
     // Clipboard
     private bool isClipboardEnabled = true;
@@ -808,9 +1154,17 @@
 
     private async Task AfterInitializedAsync()
     {
-        await Permissions();
+        // Get the current user from the authentication state
+        var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
 
+        // Check if user is authenticated
+        if (user?.Identity is not { IsAuthenticated: true })
+        {
+            NavigationManager.NavigateTo("/login", true);
+            return;
+        }
         
+        await Permissions();
         
         isMobile = await JSRuntime.InvokeAsync<bool>("isMobileDevice");
 
@@ -831,7 +1185,7 @@
         // Convert to boolean
         recordSessionForce = recordSessionForceString == "1";
 
-        if (!Members_Portal.IsCodeSigned)
+        if (!Classes.Members_Portal.License.CodeSigned)
             await ShowCodeSigningWarning();
         
         await Reconnect();
@@ -845,10 +1199,7 @@
 
     public class Remote_Target_Device
     {
-        public string device_id { get; set; }
-        public string device_name { get; set; }
-        public string location_guid { get; set; }
-        public string tenant_guid { get; set; }
+        public string access_key { get; set; }
     }
 
     public class Remote_Command
@@ -1026,7 +1377,7 @@
                         int jpegStartIndex = -1;
                         for (int i = 0; i < Math.Min(imageBytes.Length - 1, 20); i++)
                         {
-                            // JPEG beginnt immer mit 0xFF 0xD8
+                            // JPEG always starts with 0xFF 0xD8
                             if (imageBytes[i] == 0xFF && imageBytes[i + 1] == 0xD8)
                             {
                                 jpegStartIndex = i;
@@ -1068,10 +1419,19 @@
                         await JSRuntime.InvokeVoidAsync("updateImageBlob", actualImageBytes);
 
                         // Check if recording is enabled
-                        //OSSCH_START 53b19447-c6af-4c11-8cd7-ceb2e8e7a542 //OSSCH_END
+                        if (recordSession || recordSessionForce)
+                        {
+                            if (!Directory.Exists(recordSessionIdDir))
+                                Directory.CreateDirectory(recordSessionIdDir);
 
-                        // Prüfung auf leeres Bild
-                        if (actualImageBytes.Length < 1000) // Anpassen je nach minimaler Bildgröße
+                            if (recordSessionCounter % 2 == 0)
+                                File.WriteAllBytes(Path.Combine(recordSessionIdDir, $"{recordSessionCounter}.png"), actualImageBytes);
+
+                            recordSessionCounter++;
+                        }
+                        
+                        // Check for empty image
+                        if (actualImageBytes.Length < 1000) // Adjust according to minimal image size
                         {
                             rendered = false;
                             remoteScreenFetchTries++;
@@ -1230,11 +1590,19 @@
                                 // First time getting users after reset - request access and start screen sharing
                                 await Remote_Request_Access();
                                 
+                                // Get screen indexes immediately after getting users
+                                await Remote_Get_Screen_Indexes();
+                                
                                 // Start screen refresh timer
                                 if (!refresh_screen_timer_running)
                                 {
                                     await Remote_Screen_Refresh_Timer_Setup();
                                 }
+                            }
+                            else
+                            {
+                                // Users were already loaded before, get screen indexes for current user
+                                await Remote_Get_Screen_Indexes();
                             }
                             
                             // Start fetch users timer if not already running
@@ -1273,11 +1641,16 @@
                         screens.Clear();
                         screens = new List<int>();
 
-                        for (int i = 0; i < Convert.ToInt32(command); i++)
+                        int screenCount = Convert.ToInt32(command);
+                        for (int i = 0; i < screenCount; i++)
                         {
                             screens.Add(i);
                         }
 
+                        // Update virtual display index limits based on available screens
+                        _vdMaxDisplayIndex = screenCount > 0 ? screenCount - 1 : 0;
+                        _vdMonitorCount = screenCount;
+                        
                         StateHasChanged();
                     }
                     catch (Exception ex)
@@ -1366,6 +1739,72 @@
                     catch (Exception ex)
                     {
                         Logging.Handler.Error("ReceiveClientResponseRemoteControlClipboard", "General error", ex.ToString());
+                    }
+                });
+            });
+            
+            // ReceiveClientResponseVirtualDisplay
+            remote_server_client.On<string>("ReceiveClientResponseVirtualDisplay", async (command) =>
+            {
+                Logging.Handler.Debug("ReceiveClientResponseVirtualDisplay", "command", command);
+
+                // Use InvokeAsync to reflect changes on UI immediately
+                await InvokeAsync(() =>
+                {
+                    try
+                    {
+                        // Update last response time
+                        lastResponseTime = DateTime.Now;
+                        
+                        // Stop status checking spinner
+                        _vdDriverStatusChecking = false;
+                        
+                        // Check for driver status response
+                        if (command.Contains("driver_installed", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _vdDriverInstalled = true;
+                            _vdDriverActionInProgress = false;
+                            StateHasChanged();
+                            return;
+                        }
+                        else if (command.Contains("driver_not_installed", StringComparison.OrdinalIgnoreCase) || 
+                                 command.Contains("driver_uninstalled", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _vdDriverInstalled = false;
+                            _vdDriverActionInProgress = false;
+                            StateHasChanged();
+                            return;
+                        }
+
+                        // Store the response for display in the UI
+                        _vdLastResponse = command;
+                        
+                        // Parse the response and show appropriate snackbar (positioned on the left)
+                        if (command.Contains("error", StringComparison.OrdinalIgnoreCase) || 
+                            command.Contains("failed", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _vdDriverActionInProgress = false;
+                        }
+                        else if (command.Contains("success", StringComparison.OrdinalIgnoreCase) ||
+                                 command.Contains("driver_installed", StringComparison.OrdinalIgnoreCase) ||
+                                 command.Contains("driver_uninstalled", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Clear action in progress flag immediately when operation completes
+                            _vdDriverActionInProgress = false;
+                            
+                            // If displays were added or removed, refresh screen indexes
+                            if (command.Contains("config_applied", StringComparison.OrdinalIgnoreCase))
+                            {
+                                // Give the system a moment to adjust
+                                Task.Delay(1000).ContinueWith(_ => Remote_Get_Screen_Indexes());
+                            }
+                        }
+
+                        StateHasChanged();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logging.Handler.Error("ReceiveClientResponseVirtualDisplay", "General error", ex.ToString());
                     }
                 });
             });
@@ -1478,7 +1917,7 @@
 
     // Loop to refresh the screen
     private System.Threading.Timer remote_screen_refresh_timer;
-    private int remote_screen_refresh_ms = 400;
+    private int remote_screen_refresh_ms = 200;
     private int _quality = 0;
     
     // User fetch timer
@@ -1598,10 +2037,7 @@
 
             var targetDevice = new Remote_Target_Device
             {
-                device_id = device_id,
-                device_name = device_name,
-                tenant_guid = tenant_guid,
-                location_guid = location_guid
+                access_key = access_key,
             };
 
             var command = new Remote_Command
@@ -1679,10 +2115,7 @@
 
             var targetDevice = new Remote_Target_Device
             {
-                device_id = device_id,
-                device_name = device_name,
-                tenant_guid = tenant_guid,
-                location_guid = location_guid
+                access_key = access_key
             };
 
             var command = new Remote_Command
@@ -1743,10 +2176,7 @@
 
             var targetDevice = new Remote_Target_Device
             {
-                device_id = device_id,
-                device_name = device_name,
-                tenant_guid = tenant_guid,
-                location_guid = location_guid
+                access_key = access_key
             };
 
             var command = new Remote_Command
@@ -1812,8 +2242,8 @@
     private async Task Remote_Get_Screen_Indexes()
     {
 
-        // Check if connected & user is selected
-        if (!refresh_screen_timer_running || String.IsNullOrEmpty(user))
+        // Check if user is selected
+        if (String.IsNullOrEmpty(user))
             return;
 
         try
@@ -1826,10 +2256,7 @@
 
             var targetDevice = new Remote_Target_Device
             {
-                device_id = device_id,
-                device_name = device_name,
-                tenant_guid = tenant_guid,
-                location_guid = location_guid
+                access_key = access_key
             };
 
             var command = new Remote_Command
@@ -1890,10 +2317,7 @@
 
             var targetDevice = new Remote_Target_Device
             {
-                device_id = device_id,
-                device_name = device_name,
-                tenant_guid = tenant_guid,
-                location_guid = location_guid
+                access_key = access_key
             };
 
             var command = new Remote_Command
@@ -1958,10 +2382,7 @@
 
             var targetDevice = new Remote_Target_Device
             {
-                device_id = device_id,
-                device_name = device_name,
-                tenant_guid = tenant_guid,
-                location_guid = location_guid
+                access_key = access_key
             };
 
             var command = new Remote_Command
@@ -2027,10 +2448,7 @@
 
             var targetDevice = new Remote_Target_Device
             {
-                device_id = device_id,
-                device_name = device_name,
-                tenant_guid = tenant_guid,
-                location_guid = location_guid
+                access_key = access_key
             };
 
             var command = new Remote_Command
@@ -2147,10 +2565,7 @@
 
             var targetDevice = new Remote_Target_Device
             {
-                device_id = device_id,
-                device_name = device_name,
-                tenant_guid = tenant_guid,
-                location_guid = location_guid
+                access_key = access_key
             };
 
             var command = new Remote_Command
@@ -2205,6 +2620,21 @@
     private async Task ToggleFullScreen()
     {
         await JSRuntime.InvokeVoidAsync("toggleFullScreen", "image-container");
+    }
+
+    private async Task DownloadScreenshot()
+    {
+        try
+        {
+            var fileName = $"screenshot_{device_name}_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.png";
+            await JSRuntime.InvokeVoidAsync("downloadScreenshot", imageRef, fileName);
+            Snackbar.Add("Screenshot downloaded...", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("/Remote_Control_Dialog -> DownloadScreenshot", "Error downloading screenshot", ex.ToString());
+            Snackbar.Add("General error.", Severity.Error);
+        }
     }
 
     #region RemoteScreenZoom
@@ -2279,6 +2709,9 @@
         await HandleCoordinates(e, "1"); // true to indicate that it was a right click
     }
 
+    // Cache last known good resolution to prevent dropped clicks during image updates
+    private Resolution _lastKnownResolution = new Resolution { Width = 1920, Height = 1080 };
+
     private async Task HandleCoordinates(MouseEventArgs e, string mouseActionType = "0")
     {
         try
@@ -2289,9 +2722,31 @@
 
             if (boundingRect != null)
             {
+                // Use cached resolution if current one is invalid (image updating)
+                if (resolution == null || resolution.Width <= 0 || resolution.Height <= 0)
+                {
+                    resolution = _lastKnownResolution;
+                }
+                else
+                {
+                    // Cache the valid resolution
+                    _lastKnownResolution = resolution;
+                }
+
+                // Validate bounding rect dimensions - skip only if completely invalid
+                if (boundingRect.Width <= 0 || boundingRect.Height <= 0)
+                {
+                    Logging.Handler.Debug("/Remote_Control_Dialog -> HandleCoordinates", "Skipping - bounding rect invalid", $"Width: {boundingRect.Width}, Height: {boundingRect.Height}");
+                    return;
+                }
+
                 // Calculate relative coordinates
                 double relativeX = e.ClientX - boundingRect.Left;
                 double relativeY = e.ClientY - boundingRect.Top;
+
+                // Clamp relative coordinates to image bounds (allow clicks at edges)
+                relativeX = Math.Max(0, Math.Min(relativeX, boundingRect.Width));
+                relativeY = Math.Max(0, Math.Min(relativeY, boundingRect.Height));
 
                 // Scale to real resolution
                 double scaleFactorX = resolution.Width / boundingRect.Width;
@@ -2302,6 +2757,10 @@
 
                 int roundedX = (int)Math.Round(screenX);
                 int roundedY = (int)Math.Round(screenY);
+
+                // Clamp to valid screen coordinates (instead of rejecting)
+                roundedX = Math.Max(0, Math.Min(roundedX, (int)resolution.Width));
+                roundedY = Math.Max(0, Math.Min(roundedY, (int)resolution.Height));
 
                 // Send command with dynamic mouse action
                 await Remote_Mouse_Click_XYZ(roundedX.ToString(), roundedY.ToString(), mouseActionType);
@@ -2323,6 +2782,10 @@
 
     private async Task StartDrag(MouseEventArgs e)
     {
+        // Only on left mouse button
+        if (e.Button != 0)
+            return;
+            
         isDragging = true;
         hasMoved = false;
 
@@ -2332,6 +2795,9 @@
 
     private async Task EndDrag(MouseEventArgs e)
     {
+        if (!isDragging)
+            return;
+            
         // MouseUp
         await HandleCoordinates(e, "3");
 
@@ -2340,11 +2806,24 @@
 
     private async Task OnMouseMove(MouseEventArgs e)
     {
+        // Important: If the mouse button is no longer pressed during dragging, 
+        // end the dragging immediately (happens when mouseup is fired outside)
+        if (isDragging && (e.Buttons & 1) == 0)
+        {
+            // Left mouse button is no longer pressed, but we thought we were still dragging
+            isDragging = false;
+            
+            // Send MouseUp event to ensure the remote client also knows that dragging ended
+            await HandleCoordinates(e, "3");
+            return;
+        }
+        
         if (isDragging)
         {
             hasMoved = true;
-            await HandleCoordinates(e, "4"); // MouseMove
         }
+        
+        await HandleCoordinates(e, "4"); // MouseMove
     }
 
     private bool _mobileKeyboardVisible = false;
@@ -2417,10 +2896,10 @@
         if (!isFocused)
             return;
 
-        // Debug-Ausgabe
+        // Debug output
 
 
-        // Prüfen, ob Modifier verwendet wurden
+        // Check if modifiers were used
         bool hasModifier = e.CtrlKey || e.ShiftKey || e.AltKey || e.MetaKey;
 
         string input;
@@ -2431,12 +2910,12 @@
         }
         else if (!hasModifier && e.Key.Length == 1)
         {
-            // Einfache Zeichen wie a, 1, ! usw.
+            // Simple characters like a, 1, ! etc.
             input = e.Key;
         }
         else
         {
-            // Tastenkombinationen
+            // Key combinations
             var modifiers = new List<string>();
             if (e.CtrlKey) modifiers.Add("Ctrl");
             if (e.ShiftKey) modifiers.Add("Shift");
@@ -2465,7 +2944,7 @@
             return $"Digit{c}";
         }
 
-        // Alles andere ignorieren
+        // Ignore everything else
         return null;
     }
 
@@ -2630,6 +3109,7 @@
         parameters.Add("tenant_guid", tenant_guid);
         parameters.Add("location_guid", location_guid);
         parameters.Add("platform", platform);
+        parameters.Add("access_key", access_key);
 
         remote_file_browser_dialog_open = true;
 
@@ -2673,6 +3153,7 @@
         parameters.Add("device_name", device_name);
         parameters.Add("tenant_guid", tenant_guid);
         parameters.Add("location_guid", location_guid);
+        parameters.Add("access_key", access_key);
 
         remote_shell_dialog_open = true;
 
@@ -2722,10 +3203,7 @@
 
             var targetDevice = new Remote_Target_Device
             {
-                device_id = device_id,
-                device_name = device_name,
-                tenant_guid = tenant_guid,
-                location_guid = location_guid
+                access_key = access_key
             };
 
             var command = new Remote_Command
@@ -2784,10 +3262,7 @@
 
             var targetDevice = new Remote_Target_Device
             {
-                device_id = device_id,
-                device_name = device_name,
-                tenant_guid = tenant_guid,
-                location_guid = location_guid
+                access_key = access_key
             };
 
             var command = new Remote_Command
@@ -2846,10 +3321,7 @@
 
             var targetDevice = new Remote_Target_Device
             {
-                device_id = device_id,
-                device_name = device_name,
-                tenant_guid = tenant_guid,
-                location_guid = location_guid
+                access_key = access_key
             };
 
             var command = new Remote_Command
@@ -2908,10 +3380,7 @@
 
             var targetDevice = new Remote_Target_Device
             {
-                device_id = device_id,
-                device_name = device_name,
-                tenant_guid = tenant_guid,
-                location_guid = location_guid
+                access_key = access_key
             };
 
             var command = new Remote_Command
@@ -2970,7 +3439,7 @@
     }
 
     private List<ChatMessage> chatMessages = new();
-    private string ownName = "You"; // Optional: dynamisch setzen
+    private string ownName = "You"; // Optional: set dynamically
     
     private async Task TrayIconChatMessageInputKeyDown(KeyboardEventArgs e)
     {
@@ -3015,10 +3484,7 @@
 
             var targetDevice = new Remote_Target_Device
             {
-                device_id = device_id,
-                device_name = device_name,
-                tenant_guid = tenant_guid,
-                location_guid = location_guid
+                access_key = access_key
             };
 
             var command = new Remote_Command
@@ -3189,4 +3655,444 @@
             await remote_server_client.DisposeAsync();
         }
     }
+
+    #region Virtual Display Management
+
+    // UI state
+    private bool _virtualDisplayMenuOpen = false;
+    private string _vdLastResponse = string.Empty;
+
+    // Virtual display index limits (from ReceiveClientResponseRemoteControlScreenIndexes)
+    private int _vdMaxDisplayIndex = 0;
+
+    // Monitor settings
+    private int _vdMonitorCount = 1;
+    private string _vdGpuFriendlyName = "default";
+
+    // Global refresh rates
+    private List<int> _vdGlobalRefreshRates = new List<int> { 60, 90, 120, 144, 165, 244 };
+    private int _vdNewRefreshRate = 60;
+
+    // Resolution class for the table
+    private class VdResolution
+    {
+        public int Width { get; set; }
+        public int Height { get; set; }
+        public int RefreshRate { get; set; }
+    }
+
+    // Resolutions list
+    private List<VdResolution> _vdResolutions = new List<VdResolution>
+    {
+        new VdResolution { Width = 800, Height = 600, RefreshRate = 30 },
+        new VdResolution { Width = 1366, Height = 768, RefreshRate = 30 },
+        new VdResolution { Width = 1920, Height = 1080, RefreshRate = 30 },
+        new VdResolution { Width = 2560, Height = 1440, RefreshRate = 30 },
+        new VdResolution { Width = 3840, Height = 2160, RefreshRate = 30 }
+    };
+
+    // New resolution input fields
+    private int _vdNewResWidth = 1920;
+    private int _vdNewResHeight = 1080;
+    private int _vdNewResRefreshRate = 30;
+
+    // Colour settings
+    private bool _vdSDR10bit = false;
+    private bool _vdHDRPlus = false;
+    private string _vdColourFormat = "RGB";
+
+    // Cursor settings
+    private bool _vdHardwareCursor = true;
+    private bool _vdAlphaCursorSupport = true;
+    private int _vdCursorMaxX = 128;
+    private int _vdCursorMaxY = 128;
+    private int _vdXorCursorSupportLevel = 2;
+
+    // EDID settings
+    private bool _vdCustomEdid = false;
+    private bool _vdPreventSpoof = false;
+    private bool _vdEdidCeaOverride = false;
+
+    // Logging settings
+    private bool _vdLogging = false;
+    private bool _vdDebugLogging = false;
+    private bool _vdSendLogsThroughPipe = true;
+
+    // Driver status
+    private bool _vdDriverInstalled = false;
+    private bool _vdDriverStatusChecking = false;
+    private bool _vdDriverActionInProgress = false;
+
+    private async Task ToggleVirtualDisplayMenu()
+    {
+        _virtualDisplayMenuOpen = !_virtualDisplayMenuOpen;
+        
+        // When opening the menu, check driver status
+        if (_virtualDisplayMenuOpen)
+        {
+            await VirtualDisplay_CheckDriverStatus();
+        }
+        
+        StateHasChanged();
+    }
+
+    private async Task VirtualDisplay_CheckDriverStatus()
+    {
+        try
+        {
+            _vdDriverStatusChecking = true;
+            StateHasChanged();
+            
+            var commandJson = JsonSerializer.Serialize(new { action = "checkStatus" });
+            
+            var adminIdentity = new Remote_Admin_Identity
+            {
+                token = token
+            };
+
+            var targetDevice = new Remote_Target_Device
+            {
+                access_key = access_key
+            };
+
+            var command = new Remote_Command
+            {
+                type = 15,
+                wait_response = true,
+                command = commandJson,
+                remote_control_username = user
+            };
+
+            var rootObject = new Remote_Root_Object
+            {
+                admin_identity = adminIdentity,
+                target_device = targetDevice,
+                command = command
+            };
+
+            string json = JsonSerializer.Serialize(rootObject, new JsonSerializerOptions { WriteIndented = true });
+
+            if (remote_server_client_setup)
+            {
+                Logging.Handler.Debug("VirtualDisplay_CheckDriverStatus", "Message", json);
+                await remote_server_client.SendAsync("MessageReceivedFromWebconsole", json);
+            }
+            else
+            {
+                Logging.Handler.Error("VirtualDisplay_CheckDriverStatus", "Remote server not setup.", "");
+                _vdDriverStatusChecking = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("VirtualDisplay_CheckDriverStatus", "General error", ex.ToString());
+            _vdDriverStatusChecking = false;
+        }
+    }
+
+    private void AddGlobalRefreshRate()
+    {
+        if (_vdNewRefreshRate > 0 && !_vdGlobalRefreshRates.Contains(_vdNewRefreshRate))
+        {
+            _vdGlobalRefreshRates.Add(_vdNewRefreshRate);
+            _vdGlobalRefreshRates.Sort();
+            StateHasChanged();
+        }
+    }
+
+    private void RemoveGlobalRefreshRate(int rate)
+    {
+        _vdGlobalRefreshRates.Remove(rate);
+        StateHasChanged();
+    }
+
+    private void AddResolution()
+    {
+        if (_vdNewResWidth > 0 && _vdNewResHeight > 0 && _vdNewResRefreshRate > 0)
+        {
+            // Check if resolution already exists
+            if (!_vdResolutions.Any(r => r.Width == _vdNewResWidth && r.Height == _vdNewResHeight && r.RefreshRate == _vdNewResRefreshRate))
+            {
+                _vdResolutions.Add(new VdResolution 
+                { 
+                    Width = _vdNewResWidth, 
+                    Height = _vdNewResHeight, 
+                    RefreshRate = _vdNewResRefreshRate 
+                });
+                StateHasChanged();
+            }
+        }
+    }
+
+    private void AddResolutionPreset(int width, int height, int refreshRate)
+    {
+        if (!_vdResolutions.Any(r => r.Width == width && r.Height == height && r.RefreshRate == refreshRate))
+        {
+            _vdResolutions.Add(new VdResolution 
+            { 
+                Width = width, 
+                Height = height, 
+                RefreshRate = refreshRate 
+            });
+            StateHasChanged();
+        }
+    }
+
+    private void RemoveResolution(VdResolution res)
+    {
+        _vdResolutions.Remove(res);
+        StateHasChanged();
+    }
+
+    private string GenerateVddSettingsXml()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("<?xml version='1.0' encoding='utf-8'?>");
+        sb.AppendLine("<vdd_settings>");
+        
+        // Monitors section
+        sb.AppendLine("    <monitors>");
+        sb.AppendLine($"        <count>{_vdMonitorCount}</count>");
+        sb.AppendLine("    </monitors>");
+        
+        // GPU section
+        sb.AppendLine("    <gpu>");
+        sb.AppendLine($"        <friendlyname>{_vdGpuFriendlyName}</friendlyname>");
+        sb.AppendLine("    </gpu>");
+        
+        // Global refresh rates section
+        sb.AppendLine("    <global>");
+        foreach (var rate in _vdGlobalRefreshRates)
+        {
+            sb.AppendLine($"        <g_refresh_rate>{rate}</g_refresh_rate>");
+        }
+        sb.AppendLine("    </global>");
+        
+        // Resolutions section
+        sb.AppendLine("    <resolutions>");
+        foreach (var res in _vdResolutions)
+        {
+            sb.AppendLine("        <resolution>");
+            sb.AppendLine($"            <width>{res.Width}</width>");
+            sb.AppendLine($"            <height>{res.Height}</height>");
+            sb.AppendLine($"            <refresh_rate>{res.RefreshRate}</refresh_rate>");
+            sb.AppendLine("        </resolution>");
+        }
+        sb.AppendLine("    </resolutions>");
+        
+        // Logging section
+        sb.AppendLine("    <logging>");
+        sb.AppendLine($"        <SendLogsThroughPipe>{_vdSendLogsThroughPipe.ToString().ToLower()}</SendLogsThroughPipe>");
+        sb.AppendLine($"        <logging>{_vdLogging.ToString().ToLower()}</logging>");
+        sb.AppendLine($"        <debuglogging>{_vdDebugLogging.ToString().ToLower()}</debuglogging>");
+        sb.AppendLine("    </logging>");
+        
+        // Colour section
+        sb.AppendLine("    <colour>");
+        sb.AppendLine($"        <SDR10bit>{_vdSDR10bit.ToString().ToLower()}</SDR10bit>");
+        sb.AppendLine($"        <HDRPlus>{(_vdSDR10bit ? false : _vdHDRPlus).ToString().ToLower()}</HDRPlus>");
+        sb.AppendLine($"        <ColourFormat>{_vdColourFormat}</ColourFormat>");
+        sb.AppendLine("    </colour>");
+        
+        // Cursor section
+        sb.AppendLine("    <cursor>");
+        sb.AppendLine($"        <HardwareCursor>{_vdHardwareCursor.ToString().ToLower()}</HardwareCursor>");
+        sb.AppendLine($"        <CursorMaxY>{_vdCursorMaxY}</CursorMaxY>");
+        sb.AppendLine($"        <CursorMaxX>{_vdCursorMaxX}</CursorMaxX>");
+        sb.AppendLine($"        <AlphaCursorSupport>{_vdAlphaCursorSupport.ToString().ToLower()}</AlphaCursorSupport>");
+        sb.AppendLine($"        <XorCursorSupportLevel>{_vdXorCursorSupportLevel}</XorCursorSupportLevel>");
+        sb.AppendLine("    </cursor>");
+        
+        // EDID section
+        sb.AppendLine("    <edid>");
+        sb.AppendLine($"        <CustomEdid>{_vdCustomEdid.ToString().ToLower()}</CustomEdid>");
+        sb.AppendLine($"        <PreventSpoof>{_vdPreventSpoof.ToString().ToLower()}</PreventSpoof>");
+        sb.AppendLine($"        <EdidCeaOverride>{_vdEdidCeaOverride.ToString().ToLower()}</EdidCeaOverride>");
+        sb.AppendLine("    </edid>");
+        
+        sb.AppendLine("</vdd_settings>");
+        
+        return sb.ToString();
+    }
+
+    private async Task VirtualDisplay_InstallDriver()
+    {
+        try
+        {
+            _vdDriverActionInProgress = true;
+            StateHasChanged();
+            
+            var commandJson = JsonSerializer.Serialize(new { action = "install" });
+            
+            var adminIdentity = new Remote_Admin_Identity
+            {
+                token = token
+            };
+
+            var targetDevice = new Remote_Target_Device
+            {
+                access_key = access_key
+            };
+
+            var command = new Remote_Command
+            {
+                type = 15,
+                wait_response = true,
+                command = commandJson,
+                remote_control_username = user
+            };
+
+            var rootObject = new Remote_Root_Object
+            {
+                admin_identity = adminIdentity,
+                target_device = targetDevice,
+                command = command
+            };
+
+            string json = JsonSerializer.Serialize(rootObject, new JsonSerializerOptions { WriteIndented = true });
+
+            if (remote_server_client_setup)
+            {
+                Logging.Handler.Debug("VirtualDisplay_InstallDriver", "Message", json);
+                await remote_server_client.SendAsync("MessageReceivedFromWebconsole", json);
+            }
+            else
+            {
+                Logging.Handler.Error("VirtualDisplay_InstallDriver", "Remote server not setup.", "");
+                Snackbar.Add("Remote server not connected", Severity.Error);
+                _vdDriverActionInProgress = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("VirtualDisplay_InstallDriver", "General error", ex.ToString());
+            Snackbar.Add("Error sending command", Severity.Error);
+            _vdDriverActionInProgress = false;
+        }
+    }
+
+    private async Task VirtualDisplay_UninstallDriver()
+    {
+        try
+        {
+            _vdDriverActionInProgress = true;
+            StateHasChanged();
+            
+            var commandJson = JsonSerializer.Serialize(new { action = "uninstall" });
+            
+            var adminIdentity = new Remote_Admin_Identity
+            {
+                token = token
+            };
+
+            var targetDevice = new Remote_Target_Device
+            {
+                access_key = access_key
+            };
+
+            var command = new Remote_Command
+            {
+                type = 15,
+                wait_response = true,
+                command = commandJson,
+                remote_control_username = user
+            };
+
+            var rootObject = new Remote_Root_Object
+            {
+                admin_identity = adminIdentity,
+                target_device = targetDevice,
+                command = command
+            };
+
+            string json = JsonSerializer.Serialize(rootObject, new JsonSerializerOptions { WriteIndented = true });
+
+            if (remote_server_client_setup)
+            {
+                Logging.Handler.Debug("VirtualDisplay_UninstallDriver", "Message", json);
+                await remote_server_client.SendAsync("MessageReceivedFromWebconsole", json);
+            }
+            else
+            {
+                Logging.Handler.Error("VirtualDisplay_UninstallDriver", "Remote server not setup.", "");
+                Snackbar.Add("Remote server not connected", Severity.Error);
+                _vdDriverActionInProgress = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("VirtualDisplay_UninstallDriver", "General error", ex.ToString());
+            Snackbar.Add("Error sending command", Severity.Error);
+            _vdDriverActionInProgress = false;
+        }
+    }
+
+    private async Task VirtualDisplay_ApplyConfiguration()
+    {
+        try
+        {
+            // Generate XML configuration
+            string xmlConfig = GenerateVddSettingsXml();
+            
+            // Base64 encode the XML
+            string base64Config = await Base64.Handler.Encode(xmlConfig);
+            
+            var commandJson = JsonSerializer.Serialize(new 
+            { 
+                action = "applyConfig",
+                configBase64 = base64Config
+            });
+            
+            var adminIdentity = new Remote_Admin_Identity
+            {
+                token = token
+            };
+
+            var targetDevice = new Remote_Target_Device
+            {
+                access_key = access_key
+            };
+
+            var command = new Remote_Command
+            {
+                type = 15,
+                wait_response = true,
+                command = commandJson,
+                remote_control_username = user
+            };
+
+            var rootObject = new Remote_Root_Object
+            {
+                admin_identity = adminIdentity,
+                target_device = targetDevice,
+                command = command
+            };
+
+            string json = JsonSerializer.Serialize(rootObject, new JsonSerializerOptions { WriteIndented = true });
+
+            if (remote_server_client_setup)
+            {
+                Logging.Handler.Debug("VirtualDisplay_ApplyConfiguration", "Message", json);
+                Logging.Handler.Debug("VirtualDisplay_ApplyConfiguration", "XML Config", xmlConfig);
+                await remote_server_client.SendAsync("MessageReceivedFromWebconsole", json);
+                
+                Snackbar.Add($"Configuration sent ({_vdMonitorCount} monitor(s), {_vdResolutions.Count} resolution(s))", Severity.Info);
+            }
+            else
+            {
+                Logging.Handler.Error("VirtualDisplay_ApplyConfiguration", "Remote server not setup.", "");
+                Snackbar.Add("Remote server not connected", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("VirtualDisplay_ApplyConfiguration", "General error", ex.ToString());
+            Snackbar.Add("Error sending configuration", Severity.Error);
+        }
+    }
+
+    #endregion
+
 }
+
+

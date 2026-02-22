@@ -5,6 +5,7 @@
 @using System.Text.Json;
 @using System.Xml.Serialization;
 @using System.Text;
+@using System.IO.Compression;
 @using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 @using Microsoft.AspNetCore.DataProtection;
 @using System.Net.Http;
@@ -12,6 +13,8 @@
 @using System.Net;
 @using System.Security.Claims
 @using NetLock_RMM_Web_Console.Classes.Authentication
+@using NetLock_RMM_Web_Console.Components.Shared
+@using NetLock_RMM_Web_Console.Classes.Theme
 
 @inject NavigationManager NavigationManager
 @inject ILocalStorageService localStorage
@@ -21,6 +24,7 @@
 @inject IDataProtectionProvider DataProtectionProvider
 @inject IStringLocalizer<Pages.Settings.System_Settings.System_Settings> Localizer
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ThemeUpdateService ThemeUpdateService
 
 <style>
     .selected-row-light {
@@ -101,7 +105,7 @@
 
         @if (Configuration.Members_Portal.IsCloudEnabled)
         {
-            <MudAlert Class="mb-3" Severity="Severity.Warning">This section is administered by the cloud team. The view is limited. :-)</MudAlert>
+            <MudAlert Class="mb-3" Severity="Severity.Warning">Some settings that are available in the On-Premises version are not visible here. This is because our cloud team manages these. :-)</MudAlert>
         }
 
         @if (permissions_settings_enabled && permissions_settings_system_enabled)
@@ -111,7 +115,7 @@
                 @if (!Configuration.Members_Portal.IsCloudEnabled)
                 {
                 <MudTabPanel Text="Overview">
-
+                    
                         <MudPaper Elevation="4" Class="mt-0">
 
                             <MudText Class="ml-2" Typo="Typo.h6">@Localizer["MySQL"]</MudText>
@@ -405,58 +409,49 @@
                 }
                     @if (!Configuration.Members_Portal.IsCloudEnabled)
                     {
-                   <MudTabPanel Text="Licensing">
-                        <MudPaper Class="mt-0 pa-4">
-                            
-                            <!-- Header Section -->
-                            <MudText Typo="Typo.h5" Class="mb-4">
-                                <MudIcon Icon="@Icons.Material.Filled.Key" Class="mr-2" />
-                                @Localizer["Members Portal Api"]
-                            </MudText>
-                    
-                            @if (!Configuration.Members_Portal.IsApiEnabled)
-                            {
-                                <MudAlert Severity="Severity.Warning" Icon="@Icons.Material.Filled.SyncDisabled" Class="mb-4">
-                                    @Localizer["members portal api is not enabled. Please enable it in the appsettings.json"]
-                                </MudAlert>
-                            }
-                            else
-                            {
+                       <MudTabPanel Text="Licensing">
+                            <MudPaper Class="mt-0 pa-4">
+                                
+                                <!-- Header Section -->
+                                <MudText Typo="Typo.h5" Class="mb-4">
+                                    <MudIcon Icon="@Icons.Material.Filled.Key" Class="mr-2" />
+                                    @Localizer["Members Portal Api"]
+                                </MudText>
                                 <!-- API Key Section (Read-Only) -->
                                 <MudCard Elevation="2" Class="mb-4">
                                     <MudCardContent>
                                         <MudText Typo="Typo.h6" Class="mb-3">API Konfiguration</MudText>
-                                        <MudTextField 
-                                            T="string" 
-                                            Variant="Variant.Outlined" 
-                                            Label="@Localizer["enter your api key here"]" 
-                                            @bind-Text="members_portal_api_key" 
+                                        <MudTextField
+                                            T="string"
+                                            Variant="Variant.Outlined"
+                                            Label="@Localizer["enter your api key here"]"
+                                            @bind-Text="members_portal_api_key"
                                             Immediate="true"
                                             FullWidth="true"
                                             ReadOnly="true"
-                                            />
+                                        />
                                         <MudText Typo="Typo.caption" Class="mt-2" Color="Color.Secondary">
                                             The API key can only be changed in the appsettings.json.
                                         </MudText>
                                     </MudCardContent>
                                 </MudCard>
-                    
+
                                 <!-- License Status Section -->
                                 <MudCard Elevation="2" Class="mb-4">
                                     <MudCardContent>
                                         <MudText Typo="Typo.h6" Class="mb-3">@Localizer["license status"]</MudText>
-                                        
+
                                         <!-- Status Badge -->
-                                        <MudChip T="string" 
-                                            Icon="@(members_portal_status == "Active" ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Error)" 
-                                            Color="@(members_portal_status == "Active" ? Color.Success : Color.Error)" 
-                                            Size="Size.Medium"
-                                            Class="mb-3">
+                                        <MudChip T="string"
+                                                 Icon="@(members_portal_status == "Active" ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Error)"
+                                                 Color="@(members_portal_status == "Active" ? Color.Success : Color.Error)"
+                                                 Size="Size.Medium"
+                                                 Class="mb-3">
                                             @(members_portal_status == "Active" ? Localizer["active"] : Localizer["expired"])
                                         </MudChip>
-                    
+
                                         <MudDivider Class="my-3" />
-                    
+
                                         <!-- License Details Grid -->
                                         <MudGrid>
                                             <MudItem xs="12" sm="6">
@@ -464,50 +459,50 @@
                                                     <strong>Name:</strong> @members_portal_license_name
                                                 </MudText>
                                             </MudItem>
-                                            
+
                                             <MudItem xs="12" sm="6">
                                                 <MudCard Outlined="true" Class="pa-3">
                                                     <MudCardContent Class="pa-2">
                                                         <div style="display: flex; align-items: center; gap: 8px;">
                                                             @if (members_portal_code_signed)
                                                             {
-                                                                <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Color="Color.Success" Size="Size.Large" />
-                                                                <div>
-                                                                    <MudText Typo="Typo.body1" Color="Color.Success">
-                                                                        <strong>Code signing enabled</strong>
-                                                                    </MudText>
-                                                                    <MudText Typo="Typo.caption" Color="Color.Success">
-                                                                        Your Windows agents are code signed
-                                                                    </MudText>
-                                                                </div>
+                                                            <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Color="Color.Success" Size="Size.Large" />
+                                                            <div>
+                                                                <MudText Typo="Typo.body1" Color="Color.Success">
+                                                                    <strong>Code signing enabled</strong>
+                                                                </MudText>
+                                                                <MudText Typo="Typo.caption" Color="Color.Success">
+                                                                    Your Windows agents are code signed
+                                                                </MudText>
+                                                            </div>
                                                             }
                                                             else
                                                             {
-                                                                <MudIcon Icon="@Icons.Material.Filled.Shield" Color="Color.Default" Size="Size.Large" />
-                                                                <div>
-                                                                    <MudText Typo="Typo.body1">
-                                                                        <strong>Code Signing not available</strong>
-                                                                    </MudText>
-                                                                    <MudText Typo="Typo.caption" Class="mb-2 mr-2">
-                                                                        Available from Tier 1 for professional deployments
-                                                                    </MudText>
-                                                                    
-                                                                    <MudButton 
-                                                                        Size="Size.Small" 
-                                                                        Variant="Variant.Filled" 
-                                                                        Color="Color.Primary" 
-                                                                        StartIcon="@Icons.Material.Filled.Upgrade"
-                                                                        Href="https://www.netlockrmm.com/pricing.html"
-                                                                        Target="_blank">
-                                                                        Upgrade
-                                                                    </MudButton>
-                                                                </div>
+                                                            <MudIcon Icon="@Icons.Material.Filled.Shield" Color="Color.Default" Size="Size.Large" />
+                                                            <div>
+                                                                <MudText Typo="Typo.body1">
+                                                                    <strong>Code Signing not available</strong>
+                                                                </MudText>
+                                                                <MudText Typo="Typo.caption" Class="mb-2 mr-2">
+                                                                    Available from Tier 1 for professional deployments
+                                                                </MudText>
+
+                                                                <MudButton
+                                                                    Size="Size.Small"
+                                                                    Variant="Variant.Filled"
+                                                                    Color="Color.Primary"
+                                                                    StartIcon="@Icons.Material.Filled.Upgrade"
+                                                                    Href="https://www.netlockrmm.com/pricing.html"
+                                                                    Target="_blank">
+                                                                    Upgrade
+                                                                </MudButton>
+                                                            </div>
                                                             }
                                                         </div>
                                                     </MudCardContent>
                                                 </MudCard>
                                             </MudItem>
-                                            
+
                                             <MudItem xs="12" sm="6">
                                                 <MudText Typo="Typo.body2" Class="mb-2">
                                                     <strong>@Localizer["licenses used"]:</strong>
@@ -519,50 +514,33 @@
                                                     Size="Size.Small" />
                                             </MudItem>
                                         </MudGrid>
-                    
-                                        <MudButton 
-                                            Class="mt-3" 
-                                            Size="Size.Small" 
-                                            Variant="Variant.Filled" 
-                                            Color="Color.Info" 
-                                            StartIcon="@Icons.Material.Filled.Update" 
-                                            OnClick="Update_Members_Portal_License_Information" 
+
+                                        <MudButton
+                                            Class="mt-3"
+                                            Size="Size.Small"
+                                            Variant="Variant.Filled"
+                                            Color="Color.Info"
+                                            StartIcon="@Icons.Material.Filled.Update"
+                                            OnClick="Update_Members_Portal_License_Information"
                                             Disabled="@(String.IsNullOrEmpty(members_portal_api_key))">
                                             @Localizer["refresh license information"]
                                         </MudButton>
                                     </MudCardContent>
                                 </MudCard>
-                            }
-                    
-                        </MudPaper>
-                    </MudTabPanel>
+                        
+                            </MudPaper>
+                        </MudTabPanel>
                     }
+                    
                 <MudTabPanel Text="Updates">
                     <MudPaper Class="mt-0 pa-4">
-                        <MudText Typo="Typo.h6">Automatic Agent Updates</MudText>
-                        
-                        <MudAlert Class="mt-3 mb-4" Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
-                            <strong>Global Master Switches:</strong> These settings act as global master switches for automatic agent updates.
-                            <br/>• When enabled here, you <strong>must also enable</strong> agent updates in the policy assigned to each device.
-                            <br/>• Both the global switch (here) AND the policy setting must be enabled for updates to work.
-                            <br/>• If disabled here, no automatic updates will occur regardless of policy settings.
-                        </MudAlert>
-
-                        <MudText Typo="Typo.subtitle1" Class="mb-2"><strong>Platform-specific Master Switches:</strong></MudText>
-                        <MudSwitch Class="ml-2" @bind-Value="agent_updates_windows_enabled" Color="Color.Primary">Windows</MudSwitch>
-                        <MudSwitch Class="ml-2" @bind-Value="agent_updates_linux_enabled" Color="Color.Primary">Linux</MudSwitch>
-                        <MudSwitch Class="ml-2" @bind-Value="agent_updates_macos_enabled" Color="Color.Primary">MacOS</MudSwitch>
-                        
-                        <MudDivider Class="my-4" />
-                        
-                        <MudText Typo="Typo.subtitle1" Class="mb-2"><strong>Concurrent Limit:</strong></MudText>
+                        <MudText Typo="Typo.h6">Concurrent Limit</MudText>
                         
                         <MudAlert Class="mb-3" Severity="Severity.Info" Icon="@Icons.Material.Filled.Rocket">
                             <strong>NetLock State-of-the-Art High-Performance Backend:</strong>
                             <br/>• NetLock uses a cutting-edge high-performance backend that loads and caches installation packages in RAM
-                            <br/>• This state-of-the-art architecture means the primary limitation is your available <strong>network bandwidth</strong>, not CPU or memory
+                            <br/>• This state-of-the-art architecture means the primary limitation is your available <strong>network bandwidth</strong>, not CPU or disk I/O
                             <br/>• Massive rollouts are possible with minimal resource impact on the backend server
-                            <br/>• The concurrent limit mainly controls how many simultaneous network connections are used
                             <br/>• Perfect for enterprise-scale deployments with thousands of agents
                         </MudAlert>
 
@@ -590,10 +568,13 @@
                 </MudTabPanel>
                 @if (!Configuration.Members_Portal.IsCloudEnabled)
                 {
-                    <MudTabPanel Text="Database">
-                        <MudPaper Class="mt-0 pa-4">
-                            <MudText Typo="Typo.h6">Clean Up & Optimize Database</MudText>
-                            <MudText Class="mt-2" Typo="Typo.body1">
+                    <MudTabPanel Text="Database Management">
+                            <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true">
+                                
+                                <!-- Cleanup -->
+                                <MudTabPanel Text="Clean Up & Optimize Database">
+                                    <MudPaper Class="mt-0">
+                            <MudText Typo="Typo.body1">
                                 Automatic cleanup of historical database entries to manage storage space and optimize performance.
                             </MudText>
 
@@ -761,8 +742,71 @@
                             <MudButton Class="ml-2 mt-2 mb-3" Size="Size.Small" Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Save" OnClick="@Save_Cleanup_Settings">Save</MudButton>
                             <MudButton Class="ml-2 mt-2 mb-3" Size="Size.Small" Variant="Variant.Filled" Color="Color.Default" StartIcon="@Icons.Material.Filled.Refresh" OnClick="@Optimize_Database">Optimize Database</MudButton>
                         </MudPaper>
+                                </MudTabPanel>
+
+                                <!-- MySQL Console -->
+                                @if (permissions_settings_sql_console_enabled)
+                    {
+                        <MudTabPanel Text="MySQL Console">
+
+                            <MudAlert Severity="Severity.Info" Class="mb-2">
+                                <b>Note:</b> Any SQL commands can be executed. Result sets are displayed; otherwise, the affected rows are output. Maximum displayed
+                                rows: @sqlConsoleRowLimit.
+                            </MudAlert>
+                            <MudTextField T="string"
+                                          Lines="3"
+                                          FullWidth="true"
+                                          Variant="Variant.Outlined"
+                                          @bind-Value="sqlConsoleQuery"
+                                          Placeholder="Enter query..."
+                                          Disabled="sqlConsoleLoading"
+                                          Class="mb-2"/>
+                            <MudStack Row="true" Spacing="2" Class="mb-2">
+                                <MudButton Variant="Variant.Filled" Color="Color.Default" OnClick="RunSqlConsoleQuery"
+                                           Disabled="sqlConsoleLoading" Size="Size.Small">
+                                    Execute
+                                </MudButton>
+                                <MudButton Variant="Variant.Filled" Color="Color.Default" OnClick="ClearSqlConsole"
+                                           Disabled="sqlConsoleLoading" Size="Size.Small">
+                                    Clear
+                                </MudButton>
+                            </MudStack>
+                            @if (sqlConsoleLoading)
+                            {
+                                <MudProgressLinear Indeterminate="true" Color="Color.Info"/>
+                            }
+                            @if (!string.IsNullOrEmpty(sqlConsoleError))
+                            {
+                                <MudAlert Severity="Severity.Error" Class="mb-2">@sqlConsoleError</MudAlert>
+                            }
+                            @if (sqlConsoleColumns.Count > 0 && sqlConsoleRows.Count > 0)
+                            {
+                                <MudTable Items="sqlConsoleRows" Dense="true" Hover="true" Bordered="true"
+                                          Striped="true">
+                                    <HeaderContent>
+                                        @foreach (var col in sqlConsoleColumns)
+                                        {
+                                            <MudTh>@col</MudTh>
+                                        }
+                                    </HeaderContent>
+                                    <RowTemplate Context="row">
+                                        @foreach (var col in sqlConsoleColumns)
+                                        {
+                                            <MudTd>@(row.TryGetValue(col, out var val) ? val : "")</MudTd>
+                                        }
+                                    </RowTemplate>
+                                </MudTable>
+                                <MudText Typo="Typo.caption" Class="mt-1">@sqlConsoleRows.Count Row(s) displayed.
+                                </MudText>
+                            }
+
+                        </MudTabPanel>
+                    }
+
+                            </MudTabs>
                     </MudTabPanel>
                 }
+
                 <MudTabPanel Text="Remote Screen Control">
                     <MudPaper Class="mt-0 mb-0">
                         
@@ -782,6 +826,50 @@
                         }
 
                         <MudButton Class="ml-2 mt-2 mb-3" Size="Size.Small" Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Save" OnClick="@SaveRemoteScreenSessionRecordingSettings">Save</MudButton>
+                    </MudPaper>
+
+                    <MudPaper Class="mt-4 mb-0">
+                        <MudText Class="ml-2 mt-2" Typo="Typo.h6">Screenshot Browser & Viewer</MudText>
+                        <MudText Class="ml-2 mt-2" Typo="Typo.body1">Browse and download recorded remote screen control sessions.</MudText>
+                        
+                        <MudButton Class="ml-2 mt-2 mb-2" Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="@LoadRecordingSessions">Load Sessions</MudButton>
+                        
+                        @if (loadingRecordings)
+                        {
+                            <MudProgressCircular Class="ml-2" Color="Color.Primary" Indeterminate="true" Size="Size.Small" />
+                        }
+                        
+                        @if (recordingSessions.Count > 0)
+                        {
+                            <MudTable Class="mt-2" Items="@recordingSessions" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true">
+                                <HeaderContent>
+                                    <MudTh>Tenant</MudTh>
+                                    <MudTh>Location</MudTh>
+                                    <MudTh>Device</MudTh>
+                                    <MudTh>Session Date</MudTh>
+                                    <MudTh>Files</MudTh>
+                                    <MudTh>Actions</MudTh>
+                                </HeaderContent>
+                                <RowTemplate Context="session">
+                                    <MudTd DataLabel="Tenant">@session.TenantName</MudTd>
+                                    <MudTd DataLabel="Location">@session.LocationName</MudTd>
+                                    <MudTd DataLabel="Device">@session.DeviceName</MudTd>
+                                    <MudTd DataLabel="Session Date">@session.SessionDateTime</MudTd>
+                                    <MudTd DataLabel="Files">@session.FileCount</MudTd>
+                                    <MudTd DataLabel="Actions">
+                                        <MudButtonGroup Variant="Variant.Outlined" Size="Size.Small">
+                                            <MudButton StartIcon="@Icons.Material.Filled.Visibility" Color="Color.Info" OnClick="@(() => ViewRecordingSession(session))">View</MudButton>
+                                            <MudButton StartIcon="@Icons.Material.Filled.Download" Color="Color.Success" OnClick="@(() => DownloadRecordingSessionZip(session))">Download ZIP</MudButton>
+                                            <MudButton StartIcon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => DeleteRecordingSession(session))">Delete</MudButton>
+                                        </MudButtonGroup>
+                                    </MudTd>
+                                </RowTemplate>
+                            </MudTable>
+                        }
+                        else if (!loadingRecordings)
+                        {
+                            <MudText Class="ml-2 mt-2 mb-2" Typo="Typo.body2" Color="Color.Secondary">No recording sessions found.</MudText>
+                        }
                     </MudPaper>
                 </MudTabPanel>
 
@@ -846,7 +934,7 @@
                                         </MudAlert>
                                     }
                                     
-                                    <MudButton Class="ml-2 mt-3 mb-3" Size="Size.Small" Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Save" OnClick="@SaveIpWhitelistBackend">Save</MudButton>
+                                    <MudButton Class="ml-2 mt-3 mb-3" Size="Size.Small" Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Save" OnClick="@SaveIpWhitelistBackend">Save & Restart</MudButton>
                                 </MudPaper>
                             </MudTabPanel>
                             
@@ -956,86 +1044,128 @@
                             
                             <!-- Web Console Title -->
                             <MudTabPanel Text="Web Console Title" Icon="@Icons.Material.Filled.Title">
-                                <MudPaper Class="mt-0">
+                                <MudPaper Class="mt-0 pa-4">
+                                    
                                     <MudAlert Class="ml-2 mr-2" Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
                                         Configure the title that will be displayed in the web console.<br/>
-                                        <strong>Changes will apply after the web console application has been restarted.</strong>
+                                        <strong>Changes will be applied immediately after saving.</strong>
                                     </MudAlert>
-                                    
-                                    <MudTextField 
-                                        Class="ml-2 mr-2 mt-3" 
-                                        T="string" 
-                                        Variant="Variant.Outlined" 
-                                        Label="Web Console Title" 
-                                        @bind-Value="webConsoleTitleInput" 
+
+                                    <MudTextField
+                                        Class="ml-2 mr-2 mt-3"
+                                        T="string"
+                                        Variant="Variant.Outlined"
+                                        Label="Web Console Title"
+                                        @bind-Value="webConsoleTitleInput"
                                         Immediate="true"
-                                        HelperText="Example: NetLock RMM" />
-                                    
+                                        HelperText="Example: NetLock RMM"/>
+
                                     @if (!string.IsNullOrEmpty(webConsoleTitleValidationError))
                                     {
                                         <MudAlert Class="mt-2 ml-2 mr-2" Severity="Severity.Error" Icon="@Icons.Material.Filled.Error">
                                             @webConsoleTitleValidationError
                                         </MudAlert>
                                     }
-                                    
-                                    <MudButton Class="ml-2 mt-3 mb-3" Size="Size.Small" Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Save" OnClick="@SaveWebConsoleTitle">Save & Restart</MudButton>
+
+                                    <MudButton Class="ml-2 mt-3 mb-3" Size="Size.Small" Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Save" OnClick="@SaveWebConsoleTitle">Save</MudButton>
                                 </MudPaper>
                             </MudTabPanel>
                             
                             <!-- Web Console Logo -->
                             <MudTabPanel Text="Web Console Logo" Icon="@Icons.Material.Filled.Image">
-                                <MudPaper Class="mt-0">
+                                <MudPaper Class="mt-0 pa-4">
                                     <MudAlert Class="ml-2 mr-2" Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
                                         Upload a custom logo for the web console. Recommended size: 200x50 pixels (PNG or JPG).<br/>
-                                        <strong>Changes will apply after the web console application has been restarted.</strong>
+                                        <strong>Changes will be applied immediately after saving.</strong>
                                     </MudAlert>
                                     
                                     <!-- Current Logo Preview -->
                                     @if (!string.IsNullOrEmpty(webConsoleLogoBase64))
                                     {
                                         <MudText Class="ml-2 mt-3" Typo="Typo.subtitle2">Current Logo:</MudText>
-                                        <MudPaper Class="ml-2 mr-2 mt-2 pa-3" Elevation="0" Style="border: 1px solid #ccc; max-width: 400px;">
+                                        <MudPaper Class="ml-2 mr-2 mt-2 pa-3" Elevation="0" Style="border: 1px solid #e0e0e0; max-width: 400px;">
                                             <img src="@($"data:image/png;base64,{webConsoleLogoBase64}")" alt="Current Logo" style="max-width: 100%; height: auto; max-height: 100px;" />
                                         </MudPaper>
                                     }
                                     
-                                    <!-- File Upload -->
-                                    <MudFileUpload T="IBrowserFile"
-                                                   Class="ml-2 mr-2 mt-3"
-                                                   Accept="image/png,image/jpeg,image/jpg"
-                                                   FilesChanged="@OnLogoFileSelected"
-                                                   MaximumFileCount="1">
-                                        <ButtonTemplate>
-                                            <MudButton HtmlTag="label"
+                                    <!-- Drag and Drop Upload Area -->
+                                    <MudStack Style="width: 100%" Class="ml-2 mr-2 mt-3">
+                                        <MudFileUpload T="IBrowserFile"
+                                                       @ref="_logoFileUpload"
+                                                       OnFilesChanged="@OnLogoFileSelected"
+                                                       Hidden="false"
+                                                       InputClass="absolute mud-width-full mud-height-full overflow-hidden z-20"
+                                                       InputStyle="opacity:0"
+                                                       tabindex="-1"
+                                                       @ondrop="@ClearLogoDragClass"
+                                                       @ondragenter="@SetLogoDragClass"
+                                                       @ondragleave="@ClearLogoDragClass"
+                                                       @ondragend="@ClearLogoDragClass"
+                                                       Accept="image/png,image/jpeg,image/jpg"
+                                                       MaximumFileCount="1">
+                                            <ActivatorContent>
+                                                <MudPaper Height="300px"
+                                                          Outlined="true"
+                                                          Class="@_logoDragClass">
+                                                    <MudStack Spacing="2" AlignItems="AlignItems.Center" Justify="Justify.Center" Style="height: 100%;">
+                                                        @if (!string.IsNullOrEmpty(webConsoleLogoPreviewBase64))
+                                                        {
+                                                            <MudImage Src="@($"data:image/png;base64,{webConsoleLogoPreviewBase64}")" 
+                                                                      Alt="Logo Preview" 
+                                                                      ObjectFit="ObjectFit.Contain"
+                                                                      Style="max-width: 90%; max-height: 180px;" />
+                                                            <MudText Typo="Typo.body2" Color="Color.Success">
+                                                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" /> @selectedLogoFileName
+                                                            </MudText>
+                                                        }
+                                                        else
+                                                        {
+                                                            <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Size="Size.Large" Color="Color.Default" />
+                                                            <MudText Typo="Typo.h6" Align="Align.Center">
+                                                                Drag and drop logo here or click
+                                                            </MudText>
+                                                            <MudText Typo="Typo.body2" Align="Align.Center" Color="Color.Default">
+                                                                PNG or JPG, max 2 MB
+                                                            </MudText>
+                                                        }
+                                                    </MudStack>
+                                                </MudPaper>
+                                            </ActivatorContent>
+                                        </MudFileUpload>
+                                        
+                                        @if (!string.IsNullOrEmpty(webConsoleLogoValidationError))
+                                        {
+                                            <MudAlert Severity="Severity.Error" Icon="@Icons.Material.Filled.Error">
+                                                @webConsoleLogoValidationError
+                                            </MudAlert>
+                                        }
+                                        
+                                        <MudToolBar Gutters="false" Class="relative d-flex justify-end gap-4 pa-0">
+                                            <MudButton Color="Color.Default"
+                                                       Disabled="@string.IsNullOrEmpty(webConsoleLogoPreviewBase64)"
+                                                       OnClick="@ClearLogoAsync"
                                                        Variant="Variant.Filled"
-                                                       Color="Color.Primary"
-                                                       StartIcon="@Icons.Material.Filled.CloudUpload"
-                                                       for="@context">
-                                                Choose Logo File
+                                                       Size="Size.Small"
+                                                       StartIcon="@Icons.Material.Filled.Clear">
+                                                Clear
                                             </MudButton>
-                                        </ButtonTemplate>
-                                    </MudFileUpload>
-                                    
-                                    @if (!string.IsNullOrEmpty(selectedLogoFileName))
-                                    {
-                                        <MudText Class="ml-2 mt-2" Typo="Typo.body2">Selected file: @selectedLogoFileName</MudText>
-                                    }
-                                    
-                                    <!-- New Logo Preview -->
-                                    @if (!string.IsNullOrEmpty(webConsoleLogoPreviewBase64))
-                                    {
-                                        <MudText Class="ml-2 mt-3" Typo="Typo.subtitle2">Preview:</MudText>
-                                        <MudPaper Class="ml-2 mr-2 mt-2 pa-3" Elevation="0" Style="border: 1px solid #ccc; max-width: 400px;">
-                                            <img src="@($"data:image/png;base64,{webConsoleLogoPreviewBase64}")" alt="Logo Preview" style="max-width: 100%; height: auto; max-height: 100px;" />
-                                        </MudPaper>
-                                    }
-
-                                    @if (!string.IsNullOrEmpty(webConsoleLogoValidationError))
-                                    {
-                                        <MudAlert Class="mt-2 ml-2 mr-2" Severity="Severity.Error" Icon="@Icons.Material.Filled.Error">
-                                            @webConsoleLogoValidationError
-                                        </MudAlert>
-                                    }
+                                            <MudButton Color="Color.Default"
+                                                       OnClick="@OpenLogoFilePickerAsync"
+                                                       Variant="Variant.Filled"
+                                                       Size="Size.Small"
+                                                       StartIcon="@Icons.Material.Filled.FolderOpen">
+                                                Select Logo
+                                            </MudButton>
+                                            <MudButton Color="Color.Success"
+                                                       Disabled="@string.IsNullOrEmpty(webConsoleLogoPreviewBase64)"
+                                                       OnClick="@SaveWebConsoleLogo"
+                                                       Variant="Variant.Filled"
+                                                       Size="Size.Small"
+                                                       StartIcon="@Icons.Material.Filled.Save">
+                                                Save
+                                            </MudButton>
+                                        </MudToolBar>
+                                    </MudStack>
                                     
                                     <MudStack Row="true" Class="ml-2 mt-3 mb-3">
                                         <MudButton Size="Size.Small" 
@@ -1043,8 +1173,9 @@
                                                    Color="Color.Success" 
                                                    StartIcon="@Icons.Material.Filled.Save" 
                                                    OnClick="@SaveWebConsoleLogo"
-                                                   Disabled="@string.IsNullOrEmpty(webConsoleLogoPreviewBase64)">
-                                            Save & Restart
+                                                   Disabled="@string.IsNullOrEmpty(webConsoleLogoPreviewBase64)"
+                                                   Style="display: none;">
+                                            Save
                                         </MudButton>
                                         
                                         @if (!string.IsNullOrEmpty(webConsoleLogoBase64))
@@ -1054,7 +1185,7 @@
                                                        Color="Color.Error" 
                                                        StartIcon="@Icons.Material.Filled.Delete" 
                                                        OnClick="@RemoveWebConsoleLogo">
-                                                Remove Logo & Restart
+                                                Remove Logo
                                             </MudButton>
                                         }
                                     </MudStack>
@@ -1064,9 +1195,9 @@
                             <!-- Theme Palette -->
                             <MudTabPanel Text="Theme Palette" Icon="@Icons.Material.Filled.Palette">
                                 <MudPaper Class="mt-0 pa-4">
-                                    <MudAlert Class="mb-3" Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
+                                    <MudAlert Class="ml-2 mr-2" Severity="Severity.Info" Icon="@Icons.Material.Filled.Info">
                                         Customize the color palette for both light and dark modes. Use hex color codes (e.g., #FF0000 for red).<br/>
-                                        <strong>Changes will apply after the web console application has been restarted.</strong>
+                                        <strong>Changes will be applied immediately after saving. The Login page may require a refresh to see the new colors.</strong>
                                     </MudAlert>
                                     
                                     <MudTabs Elevation="0" Rounded="true" Class="mt-3">
@@ -2054,7 +2185,7 @@
                                                    Color="Color.Success" 
                                                    StartIcon="@Icons.Material.Filled.Save" 
                                                    OnClick="@SaveThemePalette">
-                                            Save & Restart
+                                            Save
                                         </MudButton>
                                         
                                         <MudButton Size="Size.Small" 
@@ -2080,6 +2211,97 @@
 
 @code {
 
+    // SQL Console
+    private bool permissions_settings_sql_console_enabled = false;
+    private string sqlConsoleQuery = string.Empty;
+    private bool sqlConsoleLoading = false;
+    private string sqlConsoleError = string.Empty;
+    private List<string> sqlConsoleColumns = new();
+    private List<Dictionary<string, string>> sqlConsoleRows = new();
+    private int sqlConsoleRowLimit = 100;
+
+    private async Task RunSqlConsoleQuery()
+    {
+        sqlConsoleError = string.Empty;
+        sqlConsoleRows.Clear();
+        sqlConsoleColumns.Clear();
+
+        if (!permissions_settings_sql_console_enabled)
+        {
+            sqlConsoleError = "No permissions.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(sqlConsoleQuery))
+        {
+            sqlConsoleError = "No query provided.";
+            return;
+        }
+
+        sqlConsoleLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            await conn.OpenAsync();
+
+            await using var cmd = new MySqlCommand(sqlConsoleQuery.Trim(), conn)
+            {
+                CommandTimeout = 30
+            };
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            var fieldCount = reader.FieldCount;
+            int rowCounter = 0;
+
+            if (fieldCount > 0)
+            {
+                for (int i = 0; i < fieldCount; i++)
+                    sqlConsoleColumns.Add(reader.GetName(i));
+
+                while (await reader.ReadAsync())
+                {
+                    if (rowCounter >= sqlConsoleRowLimit)
+                        break;
+
+                    var row = new Dictionary<string, string>();
+                    for (int i = 0; i < fieldCount; i++)
+                    {
+                        var val = reader.IsDBNull(i) ? string.Empty : reader.GetValue(i)?.ToString();
+                        row[sqlConsoleColumns[i]] = val ?? string.Empty;
+                    }
+                    sqlConsoleRows.Add(row);
+                    rowCounter++;
+                }
+            }
+            else
+            {
+                // No result set, show affected rows
+                sqlConsoleColumns.Add("Info");
+                sqlConsoleRows.Add(new Dictionary<string, string> { { "Info", $"{reader.RecordsAffected} Zeile(n) betroffen." } });
+            }
+        }
+        catch (Exception ex)
+        {
+            sqlConsoleError = ex.Message;
+            Logging.Handler.Error("System_Settings -> RunSqlConsoleQuery", "Query: " + sqlConsoleQuery, ex.ToString());
+        }
+        finally
+        {
+            sqlConsoleLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ClearSqlConsole()
+    {
+        sqlConsoleQuery = string.Empty;
+        sqlConsoleError = string.Empty;
+        sqlConsoleRows.Clear();
+        sqlConsoleColumns.Clear();
+    }
+
     #region Permissions System
 
     private string permissions_json = String.Empty;
@@ -2103,7 +2325,8 @@
             string netlock_username = user.FindFirst(ClaimTypes.Email)?.Value;
 
             permissions_settings_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "settings_enabled");
-                        permissions_settings_system_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "settings_system_enabled");
+            permissions_settings_system_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "settings_system_enabled");
+            permissions_settings_sql_console_enabled = await Classes.Authentication.Permissions.Verify_Permission(netlock_username, "settings_system_mysql_console");
 
             if (!permissions_settings_enabled)
                 logout = true;
@@ -2160,8 +2383,7 @@
         //await Get_Servers();
         await Get_Agent_Updates();
 
-        if (Configuration.Members_Portal.IsApiEnabled)
-            await Get_Members_Portal_License_Status();
+        await Get_Members_Portal_License_Status();
 
         // Get CPU Usage
         cpuUsage = await Classes.System_Information.Handler.Get_CPU_Usage();
@@ -2302,6 +2524,11 @@
     private string webConsoleLogoValidationError = string.Empty;
     private string selectedLogoFileName = string.Empty;
     private IBrowserFile? selectedLogoFile = null;
+    private MudFileUpload<IBrowserFile>? _logoFileUpload;
+    
+    // Drag and drop styling for logo upload
+    private const string DefaultLogoDragClass = "relative rounded-lg border-2 border-dashed pa-4 mt-4 mud-width-full mud-height-full";
+    private string _logoDragClass = DefaultLogoDragClass;
     
     // Theme Palette
     private Classes.Theme.ThemePaletteConfig themePaletteConfig = new();
@@ -2484,37 +2711,15 @@
     }
     */
 
-    // Save api key for members portal
-    //OSSCH_START 241c58a5-a702-4e08-b9a4-e6ef92d78eb6 //OSSCH_END
-
     // Update members portal license information
-    //OSSCH_START 1ef1c6ff-2e03-4f9e-a5c1-6ff0f46b48c4 //OSSCH_END
+    //OSSCH_START e78b1263-d490-4ff1-ab3c-f86c88e2facc //OSSCH_END
 
     // Get members portal license status
-    //OSSCH_START b373b616-f894-410a-af37-ed9eee36115f //OSSCH_END
+    //OSSCH_START d1f5370e-0fd5-42e4-b9ad-38264be79a92 //OSSCH_END
 
     // Get agent updates settings
     private async Task Get_Agent_Updates()
     {
-        string windows_updates_enabled = await Classes.MySQL.Handler.Quick_Reader("SELECT * FROM settings", "agent_updates_windows_enabled");
-        string linux_updates_enabled = await Classes.MySQL.Handler.Quick_Reader("SELECT * FROM settings", "agent_updates_linux_enabled");
-        string macos_updates_enabled = await Classes.MySQL.Handler.Quick_Reader("SELECT * FROM settings", "agent_updates_macos_enabled");
-
-        if (windows_updates_enabled == "1")
-            agent_updates_windows_enabled = true;
-        else
-            agent_updates_windows_enabled = false;
-
-        if (linux_updates_enabled == "1")
-            agent_updates_linux_enabled = true;
-        else
-            agent_updates_linux_enabled = false;
-
-        if (macos_updates_enabled == "1")
-            agent_updates_macos_enabled = true;
-        else
-            agent_updates_macos_enabled = false;
-
         agent_updates_max_concurrent_updates = Convert.ToInt32(await Classes.MySQL.Handler.Quick_Reader("SELECT * FROM settings", "agent_updates_max_concurrent_updates"));
     }
 
@@ -2523,39 +2728,6 @@
     {
         Snackbar.Configuration.ShowCloseIcon = true;
         Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
-
-        if (agent_updates_windows_enabled)
-        {
-            Logging.Handler.Debug("/system -> Set_Agent_Updates", "agent_updates_windows_enabled", "true");
-            await Classes.MySQL.Handler.Execute_Command("UPDATE settings SET agent_updates_windows_enabled = 1;");
-        }
-        else
-        {
-            Logging.Handler.Debug("/system -> Set_Agent_Updates", "agent_updates_windows_enabled", "false");
-            await Classes.MySQL.Handler.Execute_Command("UPDATE settings SET agent_updates_windows_enabled = 0;");
-        }
-
-        if (agent_updates_linux_enabled)
-        {
-            Logging.Handler.Debug("/system -> Set_Agent_Updates", "agent_updates_linux_enabled", "true");
-            await Classes.MySQL.Handler.Execute_Command("UPDATE settings SET agent_updates_linux_enabled = 1;");
-        }
-        else
-        {
-            Logging.Handler.Debug("/system -> Set_Agent_Updates", "agent_updates_linux_enabled", "false");
-            await Classes.MySQL.Handler.Execute_Command("UPDATE settings SET agent_updates_linux_enabled = 0;");
-        }
-
-        if (agent_updates_macos_enabled)
-        {
-            Logging.Handler.Debug("/system -> Set_Agent_Updates", "agent_updates_macos_enabled", "true");
-            await Classes.MySQL.Handler.Execute_Command("UPDATE settings SET agent_updates_macos_enabled = 1;");
-        }
-        else
-        {
-            Logging.Handler.Debug("/system -> Set_Agent_Updates", "agent_updates_macos_enabled", "false");
-            await Classes.MySQL.Handler.Execute_Command("UPDATE settings SET agent_updates_macos_enabled = 0;");
-        }
 
         MySqlConnection conn = new MySqlConnection(Configuration.MySQL.Connection_String);
 
@@ -2949,22 +3121,6 @@ OPTIMIZE TABLE tenants;";
 
     private async Task SaveRemoteScreenSessionRecordingSettings()
     {
-        // Check if paid user
-        if (!Configuration.Members_Portal.IsCodeSigned)
-        {
-            // Open membership reminder dialog
-            var membershipReminderDialogOptions = new DialogOptions
-            {
-                CloseButton = true,
-                FullWidth = true,
-                MaxWidth = MaxWidth.Small,
-                BackgroundClass = "dialog-blurring",
-            };
-            
-            DialogService.Show<Shared.Membership_Reminder_Dialog>(Localizer["membership required"], membershipReminderDialogOptions);
-            return;
-        }
-        
         Snackbar.Configuration.ShowCloseIcon = true;
         Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
 
@@ -3001,7 +3157,7 @@ OPTIMIZE TABLE tenants;";
     }
 
     // SSO Settings
-    //OSSCH_START ef647980-40af-44bc-8a8b-f3f4a649d48b //OSSCH_END
+    //OSSCH_START c475a6a0-26ba-47b5-b6e3-177a143a943f //OSSCH_END
     
     // IP Whitelist Settings
     private async Task Get_Ip_Whitelist()
@@ -3210,6 +3366,244 @@ OPTIMIZE TABLE tenants;";
     }
     
     // Whitelabeling Settings
-    //OSSCH_START 6d973178-ba80-4110-ac88-b95488e8155b //OSSCH_END
+    //OSSCH_START da856111-5d3d-4c6d-a051-51ebb8ae1669 //OSSCH_END
+
+    #region Recording Session Browser
+
+    private bool loadingRecordings = false;
+    private List<RecordingSession> recordingSessions = new List<RecordingSession>();
+
+    public class RecordingSession
+    {
+        public string TenantGuid { get; set; }
+        public string TenantName { get; set; }
+        public string LocationGuid { get; set; }
+        public string LocationName { get; set; }
+        public string DeviceName { get; set; }
+        public string SessionDateTime { get; set; }
+        public string FullPath { get; set; }
+        public int FileCount { get; set; }
+    }
+
+    private async Task LoadRecordingSessions()
+    {
+        try
+        {
+            loadingRecordings = true;
+            StateHasChanged();
+
+            recordingSessions.Clear();
+
+            string recordingsDir = Application_Paths.internal_recordings_dir;
+
+            if (!Directory.Exists(recordingsDir))
+            {
+                Snackbar.Add("Recordings directory does not exist.", Severity.Warning);
+                return;
+            }
+
+            // Scan tenant directories
+            var tenantDirs = Directory.GetDirectories(recordingsDir);
+            
+            foreach (var tenantDir in tenantDirs)
+            {
+                string tenantGuid = Path.GetFileName(tenantDir);
+                string tenantName = await GetTenantName(tenantGuid);
+
+                // Scan location directories
+                var locationDirs = Directory.GetDirectories(tenantDir);
+                
+                foreach (var locationDir in locationDirs)
+                {
+                    string locationGuid = Path.GetFileName(locationDir);
+                    string locationName = await GetLocationName(locationGuid);
+
+                    // Scan device directories
+                    var deviceDirs = Directory.GetDirectories(locationDir);
+                    
+                    foreach (var deviceDir in deviceDirs)
+                    {
+                        string deviceName = Path.GetFileName(deviceDir);
+
+                        // Scan session directories
+                        var sessionDirs = Directory.GetDirectories(deviceDir);
+                        
+                        foreach (var sessionDir in sessionDirs)
+                        {
+                            string sessionDirName = Path.GetFileName(sessionDir);
+                            int fileCount = Directory.GetFiles(sessionDir, "*.png").Length;
+
+                            if (fileCount > 0)
+                            {
+                                recordingSessions.Add(new RecordingSession
+                                {
+                                    TenantGuid = tenantGuid,
+                                    TenantName = tenantName,
+                                    LocationGuid = locationGuid,
+                                    LocationName = locationName,
+                                    DeviceName = deviceName,
+                                    SessionDateTime = sessionDirName,
+                                    FullPath = sessionDir,
+                                    FileCount = fileCount
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            Snackbar.Add($"Loaded {recordingSessions.Count} recording session(s).", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("Settings -> LoadRecordingSessions", "Error", ex.ToString());
+            Snackbar.Add("Error loading recording sessions: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            loadingRecordings = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<string> GetTenantName(string tenantGuid)
+    {
+        MySqlConnection conn = null;
+        try
+        {
+            conn = new MySqlConnection(Configuration.MySQL.Connection_String);
+            await conn.OpenAsync();
+
+            string query = "SELECT tenant_name FROM tenants WHERE tenant_guid = @tenant_guid LIMIT 1;";
+            MySqlCommand cmd = new MySqlCommand(query, conn);
+            cmd.Parameters.AddWithValue("@tenant_guid", tenantGuid);
+
+            var result = await cmd.ExecuteScalarAsync();
+            string tenantName = result?.ToString();
+            
+            return string.IsNullOrEmpty(tenantName) ? tenantGuid : tenantName;
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("Settings -> GetTenantName", "Error", ex.ToString());
+            return tenantGuid;
+        }
+        finally
+        {
+            if (conn != null)
+                await conn.CloseAsync();
+        }
+    }
+
+    private async Task<string> GetLocationName(string locationGuid)
+    {
+        try
+        {
+            string locationName = await Classes.MySQL.Handler.Quick_Reader($"SELECT * FROM locations WHERE location_guid = '{locationGuid}';", "location_name");
+            return string.IsNullOrEmpty(locationName) ? locationGuid : locationName;
+        }
+        catch
+        {
+            return locationGuid;
+        }
+    }
+
+    private async Task ViewRecordingSession(RecordingSession session)
+    {
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            FullWidth = true,
+            MaxWidth = MaxWidth.ExtraLarge,
+            BackgroundClass = "dialog-blurring",
+        };
+
+        DialogParameters parameters = new DialogParameters();
+        parameters.Add("Session", session);
+
+        await DialogService.ShowAsync<Shared.Recording_Session_Viewer_Dialog>("Recording Viewer - " + session.DeviceName, parameters, options);
+    }
+
+    private async Task DownloadRecordingSessionZip(RecordingSession session)
+    {
+        try
+        {
+            loadingRecordings = true;
+            StateHasChanged();
+
+            string zipFileName = $"{session.TenantName}_{session.LocationName}_{session.DeviceName}_{session.SessionDateTime}.zip";
+            string zipPath = Path.Combine(Application_Paths.internal_recordings_zipped_dir, zipFileName);
+
+            // Create zip file
+            if (File.Exists(zipPath))
+                File.Delete(zipPath);
+
+            System.IO.Compression.ZipFile.CreateFromDirectory(session.FullPath, zipPath);
+
+            // Trigger download
+            var fileBytes = await File.ReadAllBytesAsync(zipPath);
+            await JSRuntime.InvokeVoidAsync("downloadFileFromBytes", zipFileName, "application/zip", fileBytes);
+
+            Snackbar.Add("Recording session downloaded successfully!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("Settings -> DownloadRecordingSessionZip", "Error", ex.ToString());
+            Snackbar.Add("Error downloading recording session: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            loadingRecordings = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteRecordingSession(RecordingSession session)
+    {
+        var options = new DialogOptions
+        {
+            CloseButton = true,
+            FullWidth = true,
+            MaxWidth = MaxWidth.Medium,
+            BackgroundClass = "dialog-blurring",
+        };
+
+        bool? dialog_result = await DialogService.ShowMessageBox(
+            "Confirm Deletion",
+            $"Are you sure you want to delete the recording session for {session.DeviceName} from {session.SessionDateTime}? This action cannot be undone.",
+            yesText: Localizer["confirm"],
+            cancelText: Localizer["cancel"],
+            options: options);
+
+        bool state = Convert.ToBoolean(dialog_result == null ? "false" : "true");
+
+        if (!state)
+            return;
+
+        try
+        {
+            loadingRecordings = true;
+            StateHasChanged();
+
+            Directory.Delete(session.FullPath, true);
+
+            recordingSessions.Remove(session);
+
+            Snackbar.Add("Recording session deleted successfully!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Logging.Handler.Error("Settings -> DeleteRecordingSession", "Error", ex.ToString());
+            Snackbar.Add("Error deleting recording session: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            loadingRecordings = false;
+            StateHasChanged();
+        }
+    }
+
+    #endregion
 }
+
 

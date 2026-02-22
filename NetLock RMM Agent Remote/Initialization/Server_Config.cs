@@ -312,6 +312,35 @@ namespace Global.Initialization
                 return "error";
             }
         }
+        
+        public static string Relay_Servers()
+        {
+            try
+            {
+                string server_config_json = LoadAndDecryptConfig();
+                
+                if (server_config_json == null)
+                {
+                    Logging.Error("Server_Config_Handler", "", "Failed to load server config.");
+                    return "error";
+                }
+                
+                Logging.Debug("Server_Config_Handler", "Server_Config_Handler.Load (server_config_json)", server_config_json);
+
+                // Parse the JSON
+                using (JsonDocument document = JsonDocument.Parse(server_config_json))
+                {
+                    JsonElement element = document.RootElement.GetProperty("relay_servers");
+                    Logging.Debug("Server_Config_Handler", "Server_Config_Handler.Load (relay_servers)", element.ToString());
+                    return element.ToString();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logging.Error("Server_Config_Handler", "Server_Config_Handler.Load (relay_servers)", ex.ToString());
+                return "error";
+            }
+        }
 
         public static string Tenant_Guid()
         {
@@ -476,6 +505,7 @@ namespace Global.Initialization
                         update_servers = Configuration.Agent.update_servers,
                         trust_servers = Configuration.Agent.trust_servers,
                         file_servers = Configuration.Agent.file_servers,
+                        relay_servers = Configuration.Agent.relay_servers,
                         tenant_guid = Configuration.Agent.tenant_guid,
                         location_guid = Configuration.Agent.location_guid,
                         language = Configuration.Agent.language,

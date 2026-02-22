@@ -11,16 +11,19 @@ namespace Windows.Microsoft_Defender_Firewall
 {
     internal class Handler
     {
-        // Check if Windows Firewall is enabled
+        // Check if Windows Firewall is enabled (all three profiles)
         public static bool Status()
         {
             try
             {
-                string command = "Get-NetFirewallProfile | Where-Object {$_.Enabled -eq $true} | Select-Object -ExpandProperty Name";
+                string command = "(Get-NetFirewallProfile -Name Domain).Enabled -and (Get-NetFirewallProfile -Name Private).Enabled -and (Get-NetFirewallProfile -Name Public).Enabled";
                 string result = PowerShell.Execute_Command("Firewall_Status", command, 30000);
                 
-                // If any profile is enabled, consider firewall as enabled
-                return !string.IsNullOrWhiteSpace(result) && result.Trim() != "Error.";
+                Logging.Debug("Microsoft_Defender_Firewall.Handler.Status", "Firewall status command result", result);
+                
+                // Check if all three profiles are enabled
+                string trimmedResult = result?.Trim().ToLower() ?? "";
+                return trimmedResult == "true";
             }
             catch (Exception ex)
             {

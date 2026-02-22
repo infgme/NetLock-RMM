@@ -465,7 +465,7 @@
 
         edit_sensor_dialog_open = true;
 
-        var result = await this.DialogService.Show<Pages.Collections.Sensors.Dialogs.Edit_Sensor_Dialog>(string.Empty, parameters, options).Result;
+        var result = await (await DialogService.ShowAsync<Pages.Collections.Sensors.Dialogs.Edit_Sensor_Dialog>(string.Empty, parameters, options)).Result;
 
         edit_sensor_dialog_open = false;
 

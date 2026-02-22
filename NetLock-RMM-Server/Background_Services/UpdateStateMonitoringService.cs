@@ -1,11 +1,13 @@
 ﻿using MySqlConnector;
 using System.Data.Common;
 using static System.Runtime.InteropServices.JavaScript.JSType;
+using Microsoft.Extensions.Logging;
 
 namespace NetLock_RMM_Server.Background_Services
 {
     public class UpdateStateMonitoringService : BackgroundService
     {
+        private readonly ILogger<UpdateStateMonitoringService> _logger;
         private readonly TimeSpan _interval = TimeSpan.FromMinutes(1);
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -15,6 +17,7 @@ namespace NetLock_RMM_Server.Background_Services
                 try
                 {
                     await CheckPendingUpdates();
+                    await CheckAndUpdateMaxConcurrentAgentUpdates();
                     await Task.Delay(_interval, stoppingToken);
                 }
                 catch (TaskCanceledException ex)
@@ -84,6 +87,51 @@ namespace NetLock_RMM_Server.Background_Services
             catch (Exception ex)
             {
                 Logging.Handler.Error("ServerInformationService", "UpdateServerInformation", ex.ToString());
+            }
+        }
+        
+        private async Task CheckAndUpdateMaxConcurrentAgentUpdates()
+        {
+            try
+            {
+                // Lese aktuellen Wert aus der Datenbank
+                string dbValueStr = await MySQL.Handler.Quick_Reader("SELECT * FROM settings;", "agent_updates_max_concurrent_updates");
+                
+                if (string.IsNullOrEmpty(dbValueStr))
+                {
+                    _logger.LogWarning("Could not read agent_updates_max_concurrent_updates from database");
+                    return;
+                }
+
+                int newValue = Convert.ToInt32(dbValueStr);
+                
+                // Vergleiche mit aktuellem Wert
+                int currentValue = NetLock_RMM_Server.Configuration.Server.MaxConcurrentAgentUpdates;
+                
+                if (newValue != currentValue && newValue > 0)
+                {
+                    _logger.LogInformation($"Max Concurrent Agent Updates changed from {currentValue} to {newValue}. Updating semaphore...");
+                    
+                    // Aktualisiere den Wert in der Konfiguration
+                    NetLock_RMM_Server.Configuration.Server.MaxConcurrentAgentUpdates = newValue;
+                    
+                    // Erstelle neuen Semaphore mit dem neuen Wert
+                    var oldSemaphore = NetLock_RMM_Server.Configuration.Server.MaxConcurrentNetLockPackageDownloadsSemaphore;
+                    NetLock_RMM_Server.Configuration.Server.MaxConcurrentNetLockPackageDownloadsSemaphore = new SemaphoreSlim(newValue, newValue);
+                    
+                    // Dispose alten Semaphore nach kurzer Verzögerung (damit laufende Downloads nicht abgebrochen werden)
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(60));
+                        oldSemaphore?.Dispose();
+                    });
+                    
+                    _logger.LogInformation($"Semaphore updated successfully to {newValue} concurrent downloads");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking/updating max concurrent agent updates setting");
             }
         }
     }

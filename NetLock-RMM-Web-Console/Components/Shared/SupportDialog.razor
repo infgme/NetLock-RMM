@@ -1,0 +1,247 @@
+@using MudBlazor
+@inject IJSRuntime JSRuntime
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.Support" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">Support</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        @if (_showAppointment)
+        {
+            <MudStack Spacing="3">
+                <MudButton Variant="Variant.Text" 
+                           StartIcon="@Icons.Material.Filled.ArrowBack" 
+                           OnClick="@(() => _showAppointment = false)"
+                           Color="Color.Primary">
+                    Back
+                </MudButton>
+                <div style="width:100%;height:500px;overflow:auto;" id="my-cal-inline-netlock-rmm-q-a"></div>
+            </MudStack>
+        }
+        else if (_showProUpgradeHint)
+        {
+            <MudStack Spacing="3" AlignItems="AlignItems.Center" Class="pa-4">
+                <MudIcon Icon="@Icons.Material.Filled.Lock" Color="Color.Warning" Size="Size.Large" Style="font-size: 4rem;" />
+                <MudText Typo="Typo.h6" Align="Align.Center">Email Support is a Pro Feature</MudText>
+                <MudText Typo="Typo.body1" Align="Align.Center" Color="Color.Secondary">
+                    Direct email support is only available for Pro users. Upgrade now to get priority support!
+                </MudText>
+                <MudStack Row="true" Spacing="2" Class="mt-4">
+                    <MudButton Variant="Variant.Text" 
+                               OnClick="@(() => _showProUpgradeHint = false)"
+                               Color="Color.Default">
+                        Back
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled" 
+                               Color="Color.Warning"
+                               Href="https://netlockrmm.com/pricing"
+                               Target="_blank"
+                               StartIcon="@Icons.Material.Filled.RocketLaunch">
+                        Upgrade to Pro
+                    </MudButton>
+                </MudStack>
+            </MudStack>
+        }
+        else
+        {
+            <MudStack Spacing="3">
+                <MudText Typo="Typo.body1" Class="mb-2">How can we help you?</MudText>
+                
+                <!-- Email Support -->
+                <MudPaper Elevation="2" Class="pa-4" Style="cursor: pointer;" @onclick="@HandleEmailSupport">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                        <MudIcon Icon="@Icons.Material.Filled.Email" Color="Color.Primary" Size="Size.Large" />
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">Email Support</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">Contact us via email</MudText>
+                        </MudStack>
+                        <MudSpacer />
+                        <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Color="Color.Default" />
+                    </MudStack>
+                </MudPaper>
+
+                <!-- Documentation -->
+                <MudPaper Elevation="2" Class="pa-4" Style="cursor: pointer;" @onclick="@OpenDocumentation">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                        <MudIcon Icon="@Icons.Material.Filled.MenuBook" Color="Color.Info" Size="Size.Large" />
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">Documentation</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">Browse our knowledge base</MudText>
+                        </MudStack>
+                        <MudSpacer />
+                        <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Color="Color.Default" />
+                    </MudStack>
+                </MudPaper>
+
+                <!-- Schedule Appointment -->
+                <MudPaper Elevation="2" Class="pa-4" Style="cursor: pointer;" @onclick="@ShowAppointmentBooking">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                        <MudIcon Icon="@Icons.Material.Filled.CalendarMonth" Color="Color.Success" Size="Size.Large" />
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">Schedule a Call</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">Book a meeting with our team</MudText>
+                        </MudStack>
+                        <MudSpacer />
+                        <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Color="Color.Default" />
+                    </MudStack>
+                </MudPaper>
+
+                <!-- Community Discord -->
+                <MudPaper Elevation="2" Class="pa-4" Style="cursor: pointer;" @onclick="@OpenDiscord">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                        <MudIcon Icon="@Icons.Custom.Brands.Discord" Style="color: #5865F2;" Size="Size.Large" />
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.subtitle1" Style="font-weight: 600;">Community Discord</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">Join our community for help & discussions</MudText>
+                        </MudStack>
+                        <MudSpacer />
+                        <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Color="Color.Default" />
+                    </MudStack>
+                </MudPaper>
+            </MudStack>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@Cancel" Variant="Variant.Text">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<!-- Cal.com Embed Script -->
+@if (_showAppointment)
+{
+    <script suppress-error="BL9992">
+        (function() {
+            // Initialize Cal.com embed
+            (function (C, A, L) { 
+                let p = function (a, ar) { a.q.push(ar); }; 
+                let d = C.document; 
+                C.Cal = C.Cal || function () { 
+                    let cal = C.Cal; 
+                    let ar = arguments; 
+                    if (!cal.loaded) { 
+                        cal.ns = {}; 
+                        cal.q = cal.q || []; 
+                        d.head.appendChild(d.createElement("script")).src = A; 
+                        cal.loaded = true; 
+                    } 
+                    if (ar[0] === L) { 
+                        const api = function () { p(api, arguments); }; 
+                        const namespace = ar[1]; 
+                        api.q = api.q || []; 
+                        if(typeof namespace === "string"){
+                            cal.ns[namespace] = cal.ns[namespace] || api;
+                            p(cal.ns[namespace], ar);
+                            p(cal, ["initNamespace", namespace]);
+                        } else p(cal, ar); 
+                        return;
+                    } 
+                    p(cal, ar); 
+                }; 
+            })(window, "https://app.cal.com/embed/embed.js", "init");
+            
+            Cal("init", "netlock-rmm-q-a", {origin:"https://app.cal.com"});
+            
+            Cal.ns["netlock-rmm-q-a"]("inline", {
+                elementOrSelector:"#my-cal-inline-netlock-rmm-q-a",
+                config: {"layout":"month_view","useSlotsViewOnSmallScreen":"true"},
+                calLink: "0x101/netlock-rmm-q-a",
+            });
+            
+            Cal.ns["netlock-rmm-q-a"]("ui", {"hideEventTypeDetails":false,"layout":"month_view"});
+        })();
+    </script>
+}
+
+@code {
+    [CascadingParameter] 
+    private IMudDialogInstance? MudDialog { get; set; }
+
+    private bool _showAppointment = false;
+    private bool _showProUpgradeHint = false;
+
+    private async Task HandleEmailSupport()
+    {
+        if (!Classes.Members_Portal.License.CodeSigned)
+        {
+            // Show the Pro upgrade hint view
+            _showProUpgradeHint = true;
+            StateHasChanged();
+        }
+        else
+        {
+            // Open email client
+            await JSRuntime.InvokeVoidAsync("open", "mailto:support@netlockrmm.com", "_blank");
+        }
+    }
+
+    private async Task OpenDocumentation()
+    {
+        await JSRuntime.InvokeVoidAsync("open", "https://netlockrmm.com/docs", "_blank");
+    }
+
+    private async Task OpenDiscord()
+    {
+        await JSRuntime.InvokeVoidAsync("open", "https://discord.gg/HqUpZgtX4U", "_blank");
+    }
+
+    private async Task ShowAppointmentBooking()
+    {
+        _showAppointment = true;
+        StateHasChanged();
+        
+        // Wait a bit for the DOM to render, then initialize Cal.com
+        await Task.Delay(100);
+        await JSRuntime.InvokeVoidAsync("eval", @"
+            (function (C, A, L) { 
+                let p = function (a, ar) { a.q.push(ar); }; 
+                let d = C.document; 
+                C.Cal = C.Cal || function () { 
+                    let cal = C.Cal; 
+                    let ar = arguments; 
+                    if (!cal.loaded) { 
+                        cal.ns = {}; 
+                        cal.q = cal.q || []; 
+                        d.head.appendChild(d.createElement('script')).src = A; 
+                        cal.loaded = true; 
+                    } 
+                    if (ar[0] === L) { 
+                        const api = function () { p(api, arguments); }; 
+                        const namespace = ar[1]; 
+                        api.q = api.q || []; 
+                        if(typeof namespace === 'string'){
+                            cal.ns[namespace] = cal.ns[namespace] || api;
+                            p(cal.ns[namespace], ar);
+                            p(cal, ['initNamespace', namespace]);
+                        } else p(cal, ar); 
+                        return;
+                    } 
+                    p(cal, ar); 
+                }; 
+            })(window, 'https://app.cal.com/embed/embed.js', 'init');
+            
+            Cal('init', 'netlock-rmm-q-a', {origin:'https://app.cal.com'});
+            
+            Cal.ns['netlock-rmm-q-a']('inline', {
+                elementOrSelector:'#my-cal-inline-netlock-rmm-q-a',
+                config: {'layout':'month_view','useSlotsViewOnSmallScreen':'true'},
+                calLink: '0x101/netlock-rmm-q-a',
+            });
+            
+            Cal.ns['netlock-rmm-q-a']('ui', {'hideEventTypeDetails':false,'layout':'month_view'});
+        ");
+    }
+
+    private void Cancel()
+    {
+        MudDialog?.Close();
+    }
+}
+
+
+
+
+
+

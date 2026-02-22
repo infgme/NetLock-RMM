@@ -22,8 +22,20 @@ namespace NetLock_RMM_Agent_Comm
         public static string netlock_comm_agent_version_txt = Path.Combine(GetBasePath_CommonApplicationData(), "0x101 Cyber Security", "NetLock RMM", "Comm Agent", "version.txt");
         //public static string netlock_installer_exe = Path.Combine(GetBasePath_CommonApplicationData(), "0x101 Cyber Security", "NetLock RMM", "Installer", "Installer.exe");
         //public static string netlock_uninstaller_exe = Path.Combine(GetBasePath_CommonApplicationData(), "0x101 Cyber Security", "NetLock RMM", "Uninstaller", "Uninstaller.exe");
-        //public static string netlock_user_process_exe = Path.Combine(GetBasePath_ProgramFiles(), "0x101 Cyber Security", "NetLock RMM", "User Agent", "NetLock_RMM_User_Process.exe");
-        public static string netlock_user_process_uac_exe = Path.Combine(GetBasePath_ProgramFiles(), "0x101 Cyber Security", "NetLock RMM", "User Agent", "NetLock_RMM_User_Process_UAC.exe");
+        // User Process paths (cross-platform)
+        public static string program_files_user_process_dir = Path.Combine(GetBasePath_ProgramFiles(), OperatingSystem.IsWindows() ? "0x101 Cyber Security" : "0x101_Cyber_Security", OperatingSystem.IsWindows() ? "NetLock RMM" : "NetLock_RMM", OperatingSystem.IsWindows() ? "User Process" : "User_Process");
+        public static string program_files_user_process_path = Path.Combine(GetBasePath_ProgramFiles(), OperatingSystem.IsWindows() ? "0x101 Cyber Security" : "0x101_Cyber_Security", OperatingSystem.IsWindows() ? "NetLock RMM" : "NetLock_RMM", OperatingSystem.IsWindows() ? "User Process" : "User_Process", OperatingSystem.IsWindows() ? "NetLock_RMM_User_Process.exe" : "NetLock_RMM_User_Process");
+        public static string program_files_user_process_uac_path = Path.Combine(GetBasePath_ProgramFiles(), OperatingSystem.IsWindows() ? "0x101 Cyber Security" : "0x101_Cyber_Security", OperatingSystem.IsWindows() ? "NetLock RMM" : "NetLock_RMM", OperatingSystem.IsWindows() ? "User Process" : "User_Process", OperatingSystem.IsWindows() ? "NetLock_RMM_User_Process_UAC.exe" : "NetLock_RMM_User_Process");
+        
+        // Linux autostart paths
+        public static string linux_autostart_dir = "/etc/xdg/autostart";
+        public static string linux_autostart_user_process_desktop_file = "/etc/xdg/autostart/netlock-rmm-user-process.desktop";
+        public static string linux_autostart_tray_icon_desktop_file = "/etc/xdg/autostart/netlock-rmm-tray-icon.desktop";
+        
+        // macOS LaunchAgent paths
+        public static string macos_launch_agents_dir = "/Library/LaunchAgents";
+        public static string macos_launch_agent_user_process_plist = "/Library/LaunchAgents/com.netlock.rmm.user.process.plist";
+        public static string macos_launch_agent_tray_icon_plist = "/Library/LaunchAgents/com.netlock.rmm.tray.icon.plist";
 
         public static string program_data = Path.Combine(GetBasePath_CommonApplicationData(), "0x101 Cyber Security", "NetLock RMM", "Comm Agent");
         public static string program_data_logs = Path.Combine(GetBasePath_CommonApplicationData(), "0x101 Cyber Security", "NetLock RMM", "Comm Agent", "Logs");
@@ -52,7 +64,22 @@ namespace NetLock_RMM_Agent_Comm
         public static string tray_icon_dir =  Path.Combine(GetBasePath_CommonApplicationData(), "0x101 Cyber Security", "NetLock RMM", "Comm Agent", "Tray Icon");
         public static string tray_icon_settings_json_path = Path.Combine(GetBasePath_CommonApplicationData(), "0x101 Cyber Security", "NetLock RMM", "Comm Agent", "Tray Icon", "config.json");
         
-        public static string tray_icon_icon_exe = Path.Combine(GetBasePath_ProgramFiles(), "0x101 Cyber Security", "NetLock RMM", "Tray Icon", "NetLock_RMM_Tray_Icon.exe");
+        public static string program_files_tray_icon_path = GetTrayIconPath();
+        
+        private static string GetTrayIconPath()
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                return Path.Combine(GetBasePath_ProgramFiles(), "0x101 Cyber Security", "NetLock RMM", "Tray Icon", "NetLock_RMM_Tray_Icon.exe");
+            }
+            else
+            {
+                // Linux and macOS use underscores instead of spaces in paths
+                return Path.Combine(GetBasePath_ProgramFiles(), "0x101_Cyber_Security", "NetLock_RMM", "Tray_Icon", "NetLock_RMM_Tray_Icon");
+            }
+        }
+        
+        //public static string tray_icon_icon_exe = Path.Combine(GetBasePath_ProgramFiles(), "0x101 Cyber Security", "NetLock RMM", "Tray Icon", "NetLock_RMM_Tray_Icon.exe");
         
         // Installer
         public static string installer_package_url_winx64 = "/private/downloads/netlock/installer.package.win-x64.zip";
@@ -113,13 +140,9 @@ namespace NetLock_RMM_Agent_Comm
             {
                 return "/usr";
             }
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX) || OperatingSystem.IsMacOS())
             {
-                return "/Applications";
-            }
-            else if (OperatingSystem.IsMacOS())
-            {
-                return "/Applications";
+                return "/usr/local/bin";
             }
             else
             {

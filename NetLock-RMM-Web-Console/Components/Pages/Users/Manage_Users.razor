@@ -386,7 +386,7 @@
 
         export_table_dialog_open = true;
 
-        var result = await this.DialogService.Show<Shared.Export_Data_Dialog>(string.Empty, new DialogParameters(), options).Result;
+        var result = await (await DialogService.ShowAsync<Shared.Export_Data_Dialog>(string.Empty, new DialogParameters(), options)).Result;
 
         export_table_dialog_open = false;
 

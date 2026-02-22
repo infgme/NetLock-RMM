@@ -1,0 +1,129 @@
+@page "/update-required"
+
+@inject NavigationManager NavigationManager
+
+<style>
+    .update-required-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 80vh;
+        padding: 20px;
+    }
+
+    .update-card {
+        max-width: 900px;
+        width: 100%;
+    }
+</style>
+
+<div class="update-required-container">
+    <MudCard Class="update-card">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <div style="text-align: center;">
+                    <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Large" Color="Color.Warning" Style="font-size: 64px;" />
+                    <MudText Typo="Typo.h4" Color="Color.Primary" Class="mt-3">
+                        Update Required
+                    </MudText>
+                </div>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            <MudAlert Severity="Severity.Error" Class="mb-4">
+                <MudText Typo="Typo.body1">
+                    <strong>Your NetLock RMM instance is outdated and has been disabled for security reasons.</strong>
+                </MudText>
+            </MudAlert>
+
+            <MudText Typo="Typo.body1" Class="mb-3">
+                The current update was released over <strong style="color: #d32f2f;">30 days ago</strong>. 
+                To ensure the security and integrity of your instance and your customers, 
+                an update is mandatory before you can continue using the Web Console.
+            </MudText>
+
+            <MudDivider Class="my-4" />
+
+            <MudText Typo="Typo.h6" Class="mb-2">
+                📋 Patch SLA Policy
+            </MudText>
+            <MudText Typo="Typo.body2" Class="mb-3">
+                We have introduced a <strong>Patch SLA</strong> that requires all users to promptly update 
+                after a new version is released. This measure ensures the best possible 
+                <strong>compatibility</strong> and <strong>security</strong> for all NetLock RMM instances.
+            </MudText>
+
+            <MudText Typo="Typo.body2" Class="mb-4">
+                Updates include important security patches, bug fixes, and new features. 
+                Outdated versions may pose potential security risks and may not be compatible 
+                with the latest agents and servers.
+            </MudText>
+
+            <MudDivider Class="my-4" />
+
+            <MudText Typo="Typo.h6" Class="mb-2">
+                🔧 Upgrade Instructions
+            </MudText>
+
+            <MudText Typo="Typo.subtitle1" Class="mb-2 mt-3">
+                <strong>Web Console & Server (Docker)</strong>
+            </MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                All you need to do is pull the new image with the following command:
+            </MudText>
+            <MudPaper Class="pa-3 mb-3" Style="background-color: #1e1e1e; border-radius: 4px;">
+                <code style="color: #dcdcdc; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all;">sudo docker compose -f /home/netlock/docker-compose.yml pull && sudo docker compose -f /home/netlock/docker-compose.yml up -d --remove-orphans</code>
+            </MudPaper>
+            <MudText Typo="Typo.body2" Class="mb-3">
+                The database structure & agents update automatically. No manual migration steps required.
+            </MudText>
+
+            <MudDivider Class="my-3" />
+
+            <MudText Typo="Typo.subtitle1" Class="mb-2">
+                <strong>🤖 Automatically Checking for Updates</strong>
+            </MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                We suggest automatically checking for newer images using <strong>Watchtower</strong>.
+            </MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                Example to check for a new version every 15 minutes:
+            </MudText>
+            <MudPaper Class="pa-3 mb-3" Style="background-color: #1e1e1e; border-radius: 4px;">
+                <code style="color: #dcdcdc; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; white-space: pre-wrap;">sudo docker run --detach \
+    --name watchtower \
+    --volume /var/run/docker.sock:/var/run/docker.sock \
+    --restart unless-stopped \
+    nickfedor/watchtower \
+    --interval 900</code>
+            </MudPaper>
+
+            <MudDivider Class="my-4" />
+
+            <div style="text-align: center;">
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                    After completing the update, you will automatically regain access to the Web Console.
+                </MudText>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" 
+                           Href="https://netlockrmm.com/docs/upgrade" Target="_blank"
+                           StartIcon="@Icons.Material.Filled.OpenInNew">
+                    Open Upgrade Documentation
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Large" 
+                           Class="ml-2" OnClick="@RefreshPage"
+                           StartIcon="@Icons.Material.Filled.Refresh">
+                    Check Again
+                </MudButton>
+            </div>
+        </MudCardContent>
+    </MudCard>
+</div>
+
+@code {
+    
+    private void RefreshPage()
+    {
+        NavigationManager.NavigateTo("/", true);
+    }
+}

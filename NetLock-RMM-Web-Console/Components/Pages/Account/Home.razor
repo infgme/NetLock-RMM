@@ -1,4 +1,5 @@
-﻿@page "/home"
+﻿@page "/account/home"
+@page "/home"
 
 @using MySqlConnector
 @using System.Data
@@ -72,6 +73,7 @@
 
         </MudPaper>
 
+
         <MudText Class="mt-10" Typo="Typo.h5" Align="Align.Center">"@funFact"</MudText>
 
     </Authorized>
@@ -84,7 +86,6 @@
     private bool _isDarkMode;
 
     private string netlock_username = String.Empty;
-    public static List<string> permissions_tenants_list = new List<string> { };
 
     private async Task<bool> Permissions()
     {
@@ -100,9 +101,7 @@
                 logout = true;
 
             netlock_username = user.FindFirst(ClaimTypes.Email)?.Value;
-
-            permissions_tenants_list = await Classes.Authentication.Permissions.Get_Tenants(netlock_username, false);
-
+            
             if (logout) // Redirect to the login page
             {
                 NavigationManager.NavigateTo("/logout", true);

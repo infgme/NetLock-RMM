@@ -187,7 +187,7 @@
                             </MudButton>
                         }
                     }
-                    
+                   
                     if (remote_server_client_setup)
                     {
                         <MudTooltip Text="You are connected to the remote backend.">
@@ -204,6 +204,10 @@
                     <MudTable Class="mt-5" Height="@(devices_table_view_port)" FixedHeader="true" FixedFooter="true" Hover="true" RowsPerPage="25" Dense="true" Items="@mysql_data" Filter="new Func<MySQL_Entity, bool>(Devices_Table_Filter_Func)">
                         <ToolBarContent>
                         <MudTextField @bind-Value="device_table_search_string" Placeholder="@Localizer["search"]" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true"></MudTextField>
+                        <MudSpacer />
+                        <MudCheckBox @bind-Value="show_only_online_devices" Color="Color.Success" Dense="true">
+                            <MudText Typo="Typo.body2">Show only online devices</MudText>
+                        </MudCheckBox>
                         </ToolBarContent>
                         <HeaderContent>
                             @if (moveDevices || bulkRemoteShell)
@@ -297,37 +301,17 @@
                         @if (String.IsNullOrEmpty(row.label))
                         {
                             <MudTd DataLabel="Label" @onclick="() => Devices_RowClickHandler(row)" class="@Devices_GetRowClass(row)" style="white-space: nowrap;">
-                                <MudMenu ActivationEvent="@MudBlazor.MouseEvent.RightClick" Dense="true">
-                                    <ActivatorContent>
-                                        <span style="display: flex; align-items: center;">
-                                            <MudChip T="string" Color="Color.Info" Size="Size.Small">-</MudChip>
-                                        </span>
-                                    </ActivatorContent>
-                                    <ChildContent>
-                                        @{
-                                            <MudMenuItem @onclick="async () => { await EditLabel(row.device_id, row.label); }">Edit</MudMenuItem>
-                                        }
-
-                                    </ChildContent>
-                                </MudMenu>
+                                <span style="display: flex; align-items: center; cursor: pointer;" @onclick="async () => { await EditLabel(row.device_id, row.label); }" @onclick:stopPropagation="true">
+                                    <MudChip T="string" Color="Color.Info" Size="Size.Small">-</MudChip>
+                                </span>
                             </MudTd>
                         }
                         else
                         {
                             <MudTd DataLabel="Label" @onclick="() => Devices_RowClickHandler(row)" class="@Devices_GetRowClass(row)" style="white-space: nowrap;">
-                                <MudMenu ActivationEvent="@MudBlazor.MouseEvent.RightClick" Dense="true">
-                                    <ActivatorContent>
-                                        <span style="display: flex; align-items: center;">
-                                            <MudChip T="string" Color="Color.Info" Size="Size.Small">@row.label</MudChip>
-                                        </span>
-                                    </ActivatorContent>
-                                    <ChildContent>
-                                        @{
-                                            <MudMenuItem @onclick="async () => { await EditLabel(row.device_id, row.label); }">Edit</MudMenuItem>
-                                        }
-
-                                    </ChildContent>
-                                </MudMenu>
+                                <span style="display: flex; align-items: center; cursor: pointer;" @onclick="async () => { await EditLabel(row.device_id, row.label); }" @onclick:stopPropagation="true">
+                                    <MudChip T="string" Color="Color.Info" Size="Size.Small">@row.label</MudChip>
+                                </span>
                             </MudTd>
                         }
                         
@@ -340,6 +324,7 @@
 
                                             <MudTd DataLabel="@Localizer["tenant"]" @onclick="() => Devices_RowClickHandler(row)" class="@Devices_GetRowClass(row)" style="white-space: nowrap;">
                                                 <span style="display: flex; align-items: center;">
+                                                    
                                                     <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" class="desktop-icon" />&nbsp;@row.tenant_name
                                                 </span>
                                             </MudTd>
@@ -458,38 +443,39 @@
                                 @if (permissions_devices_deauthorize)
                                 {
                                     <MudButton Class="mb-2 mb-md-0 ml-0 ml-md-2" Size="Size.Small" Color="Color.Default" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.DesktopAccessDisabled" @onclick="async () => { await Deauthorize_Device(notes_device_id); }">@Localizer["unauthorize"]</MudButton>
-
-                                    @if (permissions_devices_remote_control)
-                                    {
-                                        <MudTooltip Text="Shutdown">
-                                            <MudIconButton Class="ml-2" Icon="@Icons.Material.Filled.PowerOff" Variant="Variant.Filled" Size="Size.Small" Color="Color.Warning" OnClick="@(async () => await CheckRemoteActionAvailability(async () => await Remote_Shutdown_Device(), policyRemoteShellEnabled))"></MudIconButton>
-                                        </MudTooltip>
-                                        
-                                        <MudTooltip Text="Reboot">
-                                            <MudIconButton Class="ml-2" Icon="@Icons.Material.Filled.RestartAlt" Variant="Variant.Filled" Size="Size.Small" Color="Color.Warning" OnClick="@(async () => await CheckRemoteActionAvailability(async () => await Remote_Reboot_Device(), policyRemoteShellEnabled))"></MudIconButton>
-                                        </MudTooltip>
-                                    }
-
-                                    @if (permissions_devices_remote_shell)
-                                    {
-                                        <MudButton Class="mb-2 mb-md-0 ml-0 ml-md-2" Size="Size.Small" Color="Color.Default" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Terminal" OnClick="@(async () => await CheckRemoteActionAvailability(async () => await Remote_Shell_Dialog(), policyRemoteShellEnabled))">Shell</MudButton>
-                                    }
-
-                                    @if (permissions_devices_remote_file_browser)
-                                    {
-                                        <MudButton Class="mb-2 mb-md-0 ml-0 ml-md-2" Size="Size.Small" Color="Color.Default" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.FolderOpen" OnClick="@(async () => await CheckRemoteActionAvailability(async () => await Remote_File_Browser_Dialog(), policyRemoteFileBrowserEnabled))">@Localizer["file_browser"]</MudButton>
-                                    }
-
-                                    @if (permissions_devices_remote_eventlog_viewer && platform == "Windows")
-                                    {
-                                        <MudButton Class="mb-2 mb-md-0 ml-0 ml-md-2" Size="Size.Small" Color="Color.Default" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Article" OnClick="@(async () => await CheckRemoteActionAvailability(async () => await Remote_EventLog_Dialog(), policyRemoteShellEnabled))">Event Logs</MudButton>
-                                    }
-                                    
-                                    @if (permissions_devices_remote_control && platform == "Windows")
-                                    {
-                                        <MudButton Class="mb-2 mb-md-0 ml-0 ml-md-2" Size="Size.Small" Color="Color.Default" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Monitor" OnClick="@(async () => await CheckRemoteActionAvailability(async () => await Remote_Control_Dialog(), policyRemoteScreenControlEnabled))">Screen Control</MudButton>
-                                    }
                                 }
+
+                                @if (permissions_devices_remote_control)
+                                {
+                                    <MudTooltip Text="Shutdown">
+                                        <MudIconButton Class="ml-2" Icon="@Icons.Material.Filled.PowerOff" Variant="Variant.Filled" Size="Size.Small" Color="Color.Warning" OnClick="@(async () => await CheckRemoteActionAvailability(async () => await Remote_Shutdown_Device(), policyRemoteShellEnabled))"></MudIconButton>
+                                    </MudTooltip>
+
+                                    <MudTooltip Text="Reboot">
+                                        <MudIconButton Class="ml-2" Icon="@Icons.Material.Filled.RestartAlt" Variant="Variant.Filled" Size="Size.Small" Color="Color.Warning" OnClick="@(async () => await CheckRemoteActionAvailability(async () => await Remote_Reboot_Device(), policyRemoteShellEnabled))"></MudIconButton>
+                                    </MudTooltip>
+                                }
+
+                                @if (permissions_devices_remote_shell)
+                                {
+                                    <MudButton Class="mb-2 mb-md-0 ml-0 ml-md-2" Size="Size.Small" Color="Color.Default" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Terminal" OnClick="@(async () => await CheckRemoteActionAvailability(async () => await Remote_Shell_Dialog(), policyRemoteShellEnabled))">Shell</MudButton>
+                                }
+
+                                @if (permissions_devices_remote_file_browser)
+                                {
+                                    <MudButton Class="mb-2 mb-md-0 ml-0 ml-md-2" Size="Size.Small" Color="Color.Default" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.FolderOpen" OnClick="@(async () => await CheckRemoteActionAvailability(async () => await Remote_File_Browser_Dialog(), policyRemoteFileBrowserEnabled))">@Localizer["file_browser"]</MudButton>
+                                }
+
+                                @if (permissions_devices_remote_eventlog_viewer && platform == "Windows")
+                                {
+                                    <MudButton Class="mb-2 mb-md-0 ml-0 ml-md-2" Size="Size.Small" Color="Color.Default" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Article" OnClick="@(async () => await CheckRemoteActionAvailability(async () => await Remote_EventLog_Dialog(), policyRemoteShellEnabled))">Event Logs</MudButton>
+                                }
+                                
+                                @if (permissions_devices_remote_control && platform == "Windows" || platform == "Linux")
+                                {
+                                    <MudButton Class="mb-2 mb-md-0 ml-0 ml-md-2" Size="Size.Small" Color="Color.Default" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Monitor" OnClick="@(async () => await CheckRemoteActionAvailability(async () => await Remote_Control_Dialog(), policyRemoteScreenControlEnabled))">Screen Control</MudButton>
+                                }
+                                
                             </div>
                                 
                             <MudTabs KeepPanelsAlive=true Class="mt-2" Elevation="4" Rounded="false" Color="@Color.Default">
@@ -3914,6 +3900,11 @@
 
                                             </div>
 
+                                            @if (events_is_loading_more)
+                                            {
+                                                <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mt-2" />
+                                            }
+
                                             <MudTable Class="mt-2" Height="50vh" FixedHeader="true" FixedFooter="true" Hover="true" @bind-RowsPerPage="events_rows_per_page" Dense="true" Items="@events_mysql_data" Filter="new Func<Events_Table, bool>(Events_Table_Filter_Func)">
                                                 <ToolBarContent>
                                                     <MudTextField Class="mt-0" @bind-Value="events_table_search_string" Placeholder="@Localizer["search"]" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium"></MudTextField>
@@ -3973,6 +3964,7 @@
                                                     <MudTablePager PageSizeOptions="new int[] { 10, 25, 50, 100, 250, 500, int.MaxValue }" RowsPerPageString="@Localizer["rows_per_page"]" />
                                                 </PagerContent>
                                             </MudTable>
+
 
                                         </MudPaper>
                                     </MudTabPanel>
