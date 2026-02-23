@@ -3,7 +3,9 @@ NetLock RMM is an Remote Monitoring & Management (RMM) software built for Manage
 
 NetLock RMM can be deployed in various environments, including cloud setups or isolated/offline configurations. It supports multiple operating systems, including Windows and Linux, and can also run within Docker & Kubernetes, providing flexibility for different deployment preferences.
 
-![Web Console Preview](https://netlockrmm.com/assets/hero-demo-MVb7uUdN.webm)
+<video src="https://netlockrmm.com/assets/hero-demo-MVb7uUdN.webm" controls>
+  <p>Web Console Preview</p>
+</video>
 
 ## [Website](https://netlockrmm.com/)
 ## [Documentation](https://netlockrmm.com/docs)
@@ -83,6 +85,7 @@ Explore the full capabilities in our documentation to see everything NetLock RMM
 [See in our documentation](https://netlockrmm.com/docs/beginners-guide)
 
 Happy monitoring! 🥳
+
 
 
 
