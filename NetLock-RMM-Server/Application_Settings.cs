@@ -5,6 +5,6 @@ namespace NetLock_RMM_Server
         public static string server_version = "2.6.1.2";
         public static string agent_version = "2.6.1.2";
         
-        //OSSCH_START 02448d62-0428-4523-9839-adca8fe85a29 //OSSCH_END
+        //OSSCH_START 02e8f350-2750-45b2-9f65-66b1ee31fc43 //OSSCH_END
     }
 }
